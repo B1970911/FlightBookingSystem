@@ -4,6 +4,7 @@ const User = require("../models/User");
 const protect = async (req, res, next) => {
     let token;
 
+    
     // Check if Authorization header exists
     if (
         req.headers.authorization &&
