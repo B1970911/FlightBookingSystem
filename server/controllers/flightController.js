@@ -17,7 +17,45 @@ const createFlight = async (req, res) => {
 //getting all flights
 const getFlights = async (req, res) => {  
     try {
-        const flights = await Flight.find();
+        const { departureCity, 
+            arrivalCity, 
+            airline, 
+            status,
+            minPrice,
+            maxPrice, 
+        } = req.query;
+        
+        const filter = {};
+
+        if (departureCity) {
+            filter.departureCity = departureCity;
+        }
+
+        if (arrivalCity) {
+            filter.arrivalCity = arrivalCity;
+        }
+
+        if (airline) {
+            filter.airline = airline;
+        }
+
+        if(status){
+            filter.status=status;
+        }
+
+        if (minPrice || maxPrice) {
+            filter.price = {};
+
+        if (minPrice) {
+            filter.price.$gte = Number(minPrice);
+        }
+
+        if (maxPrice) {
+            filter.price.$lte = Number(maxPrice);
+        }
+}
+        
+        const flights = await Flight.find(filter);
 
         res.status(200).json(flights);
 
