@@ -5,11 +5,20 @@ const {
     createBooking,    
     getMyBookings,
     cancelBooking,
+    getAllBookings,
+    getBookingById,
+    getBookingStats,
 } = require("../controllers/bookingController");
 
-const { protect } = require("../middleware/authMiddleware");  //only the logged-in users should be able to book flights
+const { protect, admin } = require("../middleware/authMiddleware");
+
+router.get("/stats", protect, admin, getBookingStats);
+
+router.get("/", protect, admin, getAllBookings);
 
 router.get("/my-bookings", protect, getMyBookings);
+
+router.get("/:id", protect, getBookingById);
 
 router.post("/", protect, createBooking);
 
