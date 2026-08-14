@@ -64,6 +64,12 @@ const confirmPayment = async (req, res) => {
                 message: "Payment is already confirmed",
             });
         }
+        //checking ownership
+        if (payment.user._id.toString() !== req.user._id.toString()) {
+            return res.status(403).json({
+                message: "Not authorized to confirm this payment",
+            });
+        }
 
         payment.paymentStatus = "Paid";
         payment.paymentDate = new Date();
