@@ -80,24 +80,26 @@ const confirmPayment = async (req, res) => {
             payment.user.email,
             "Payment Confirmation",
             `
-                <h2>Payment Successful</h2>
+                <html>
+                    <body>
+                        <h2>Flight Booking Payment Confirmation</h2>
 
-                <p>Dear ${payment.user.name},</p>
+                            <p>Hello ${payment.user.name},</p>
 
-                <p>Your payment has been received successfully.</p>
+                            <p>Your payment has been successfully confirmed.</p>
 
-                <p><strong>Amount Paid:</strong> ${payment.amount}</p>
+                            <p>Payment amount: ${payment.amount}</p>
 
-                <p><strong>Payment Status:</strong> ${payment.paymentStatus}</p>
+                            <p>Payment status: ${payment.paymentStatus}</p>
 
-                <p><strong>Payment Date:</strong> ${payment.paymentDate.toLocaleString()}</p>
+                            <p>Payment date: ${payment.paymentDate.toLocaleString()}</p>
 
-                <br>
+                            <p>Thank you for using our Flight Booking System.</p>
 
-                <p>Thank you for choosing our Flight Booking System.</p>
-
-                <p>We wish you a pleasant journey! ✈️</p>
-            `
+                            <p>This is an automated payment confirmation.</p>
+                        </body>
+                    </html>
+                `
         );
 
         res.status(200).json({
