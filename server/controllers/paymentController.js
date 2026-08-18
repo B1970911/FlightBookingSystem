@@ -88,7 +88,7 @@ const confirmPayment = async (req, res) => {
 
                             <p>Your payment has been successfully confirmed.</p>
 
-                            <p>Payment amount: ${payment.amount}</p>
+                            <p>Payment amount: $${payment.amount.toFixed(2)}</p>
 
                             <p>Payment status: ${payment.paymentStatus}</p>
 
