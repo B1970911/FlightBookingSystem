@@ -78,25 +78,25 @@ const confirmPayment = async (req, res) => {
         //confirmation email
         await sendEmail(
             payment.user.email,
-            "Payment Confirmation",
+            "Payment Confirmation - SkyLink Ethiopia",
             `
                 <html>
                     <body>
-                        <h2>Flight Booking Payment Confirmation</h2>
+                        <h2>SkyLink Ethiopia - Payment Confirmation</h2>
 
                             <p>Hello ${payment.user.name},</p>
 
                             <p>Your payment has been successfully confirmed.</p>
 
-                            <p>Payment amount: $${payment.amount.toFixed(2)}</p>
+                            <p>Payment amount: ETB ${payment.amount.toFixed(2)}</p>
 
                             <p>Payment status: ${payment.paymentStatus}</p>
 
                             <p>Payment date: ${payment.paymentDate.toLocaleString()}</p>
 
-                            <p>Thank you for using our Flight Booking System.</p>
+                            <p>Thank you for choosing SkyLink Ethiopia.</p>
 
-                            <p>This is an automated payment confirmation.</p>
+                            <p>We appreciate your booking and wish you a pleasant journey.</p>
                         </body>
                     </html>
                 `
