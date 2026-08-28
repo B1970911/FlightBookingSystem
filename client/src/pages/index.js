@@ -1,0 +1,9 @@
+export { HomePage } from './HomePage';
+export { LoginPage } from './LoginPage';
+export { RegisterPage } from './RegisterPage';
+export { FlightsPage } from './FlightsPage';
+export { FlightDetailsPage } from './FlightDetailsPage';
+export { BookingsPage } from './BookingsPage';
+export { BookingCreatePage } from './BookingCreatePage';
+export { BookingDetailsPage } from './BookingDetailsPage';
+export { AdminPage } from './AdminPage';
