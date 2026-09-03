@@ -41,12 +41,30 @@ function AdminSeatModalInner({
   });
 
   // Generator form state
-  const [genEconomyPrice, setGenEconomyPrice] = useState(flight?.price || 2500);
-  const [genBusinessPrice, setGenBusinessPrice] = useState(
-    flight?.price ? Math.round(flight.price * 1.5) : 3750
-  );
+  const basePrice = Number(flight?.price) || 2500;
   const [genBusinessRows, setGenBusinessRows] = useState(2);
   const [genEconomyRows, setGenEconomyRows] = useState(8);
+
+  // Six position-specific prices (Business & Economy)
+  const [genBusinessWindowPrice, setGenBusinessWindowPrice] = useState(
+    Math.round(basePrice * 1.8)
+  );
+  const [genBusinessMiddlePrice, setGenBusinessMiddlePrice] = useState(
+    Math.round(basePrice * 1.4)
+  );
+  const [genBusinessAislePrice, setGenBusinessAislePrice] = useState(
+    Math.round(basePrice * 1.6)
+  );
+
+  const [genEconomyWindowPrice, setGenEconomyWindowPrice] = useState(
+    Math.round(basePrice * 1.15)
+  );
+  const [genEconomyMiddlePrice, setGenEconomyMiddlePrice] = useState(
+    Math.round(basePrice * 0.95)
+  );
+  const [genEconomyAislePrice, setGenEconomyAislePrice] = useState(
+    basePrice
+  );
 
   // Custom editor state (clone of seats for editing)
   const [customSeats, setCustomSeats] = useState([]);
@@ -162,16 +180,51 @@ function AdminSeatModalInner({
     e.preventDefault();
     if (!flightId) return;
 
-    if (genEconomyPrice < 0 || genBusinessPrice < 0) {
-      setError('Prices must be non-negative.');
+    if (
+      genBusinessWindowPrice === '' ||
+      genBusinessMiddlePrice === '' ||
+      genBusinessAislePrice === '' ||
+      genEconomyWindowPrice === '' ||
+      genEconomyMiddlePrice === '' ||
+      genEconomyAislePrice === ''
+    ) {
+      setError('All six seat prices are required.');
       return;
     }
-    if (genEconomyRows < 1) {
-      setError('Economy rows must be at least 1.');
+
+    const bWin = Number(genBusinessWindowPrice);
+    const bMid = Number(genBusinessMiddlePrice);
+    const bAisle = Number(genBusinessAislePrice);
+    const eWin = Number(genEconomyWindowPrice);
+    const eMid = Number(genEconomyMiddlePrice);
+    const eAisle = Number(genEconomyAislePrice);
+
+    if (
+      isNaN(bWin) || isNaN(bMid) || isNaN(bAisle) ||
+      isNaN(eWin) || isNaN(eMid) || isNaN(eAisle)
+    ) {
+      setError('All six seat prices must be valid numbers.');
       return;
     }
-    if (genBusinessRows < 0) {
-      setError('Business rows cannot be negative.');
+
+    if (
+      bWin < 0 || bMid < 0 || bAisle < 0 ||
+      eWin < 0 || eMid < 0 || eAisle < 0
+    ) {
+      setError('Seat prices must be non-negative (minimum 0 ETB).');
+      return;
+    }
+
+    const bRows = Number(genBusinessRows);
+    const eRows = Number(genEconomyRows);
+
+    if (isNaN(bRows) || bRows < 0 || !Number.isInteger(bRows)) {
+      setError('Business rows must be a non-negative integer.');
+      return;
+    }
+
+    if (isNaN(eRows) || eRows < 1 || !Number.isInteger(eRows)) {
+      setError('Economy rows must be an integer of at least 1.');
       return;
     }
 
@@ -181,10 +234,14 @@ function AdminSeatModalInner({
 
     try {
       const res = await flightService.generateFlightSeats(flightId, {
-        economyPrice: Number(genEconomyPrice),
-        businessPrice: Number(genBusinessPrice),
-        businessRows: Number(genBusinessRows),
-        economyRows: Number(genEconomyRows),
+        businessRows: bRows,
+        economyRows: eRows,
+        businessWindowPrice: bWin,
+        businessMiddlePrice: bMid,
+        businessAislePrice: bAisle,
+        economyWindowPrice: eWin,
+        economyMiddlePrice: eMid,
+        economyAislePrice: eAisle,
       });
 
       const updatedFlight = res.flight || res;
@@ -200,7 +257,7 @@ function AdminSeatModalInner({
       );
 
       setSuccessMsg(
-        `Generated ${updatedFlight.seats?.length || 0} seats successfully (${genBusinessRows * 6} Business, ${genEconomyRows * 6} Economy).`
+        `Generated ${updatedFlight.seats?.length || 0} seats successfully (${bRows * 6} Business, ${eRows * 6} Economy).`
       );
       setActiveTab('preview');
       if (onSuccess) onSuccess(updatedFlight);
@@ -508,40 +565,18 @@ function AdminSeatModalInner({
                       max="15"
                       className="form-input"
                       value={genBusinessRows}
-                      onChange={(e) => setGenBusinessRows(Number(e.target.value))}
+                      onChange={(e) => setGenBusinessRows(e.target.value === '' ? '' : Number(e.target.value))}
                       required
                       disabled={actionLoading}
                     />
                     <span className="form-hint-xs">
-                      Produces {genBusinessRows * 6} Business Class seats
+                      Produces {Number(genBusinessRows || 0) * 6} Business Class seats
                     </span>
                   </div>
 
-                  <div className="form-group">
-                    <label htmlFor="genBusinessPrice" className="form-label">
-                      Business Class Seat Price (ETB)
-                    </label>
-                    <input
-                      id="genBusinessPrice"
-                      type="number"
-                      min="0"
-                      step="50"
-                      className="form-input font-mono"
-                      value={genBusinessPrice}
-                      onChange={(e) => setGenBusinessPrice(Number(e.target.value))}
-                      required
-                      disabled={actionLoading}
-                    />
-                    <span className="form-hint-xs">
-                      Formatted as {formatCurrency(genBusinessPrice)}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="form-grid-2">
                   <div className="form-group">
                     <label htmlFor="genEconomyRows" className="form-label">
-                      Economy Class Rows (Rows {genBusinessRows + 1} to {genBusinessRows + genEconomyRows})
+                      Economy Class Rows (Rows {Number(genBusinessRows || 0) + 1} to {Number(genBusinessRows || 0) + Number(genEconomyRows || 0)})
                     </label>
                     <input
                       id="genEconomyRows"
@@ -550,33 +585,151 @@ function AdminSeatModalInner({
                       max="60"
                       className="form-input"
                       value={genEconomyRows}
-                      onChange={(e) => setGenEconomyRows(Number(e.target.value))}
+                      onChange={(e) => setGenEconomyRows(e.target.value === '' ? '' : Number(e.target.value))}
                       required
                       disabled={actionLoading}
                     />
                     <span className="form-hint-xs">
-                      Produces {genEconomyRows * 6} Economy Class seats
+                      Produces {Number(genEconomyRows || 0) * 6} Economy Class seats
                     </span>
                   </div>
+                </div>
 
-                  <div className="form-group">
-                    <label htmlFor="genEconomyPrice" className="form-label">
-                      Economy Class Seat Price (ETB)
-                    </label>
-                    <input
-                      id="genEconomyPrice"
-                      type="number"
-                      min="0"
-                      step="50"
-                      className="form-input font-mono"
-                      value={genEconomyPrice}
-                      onChange={(e) => setGenEconomyPrice(Number(e.target.value))}
-                      required
-                      disabled={actionLoading}
-                    />
-                    <span className="form-hint-xs">
-                      Formatted as {formatCurrency(genEconomyPrice)}
-                    </span>
+                {/* BUSINESS CLASS PRICING */}
+                <div style={{ marginTop: '8px', marginBottom: '16px' }}>
+                  <h5 className="sub-form-heading" style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
+                    <Crown size={15} style={{ color: '#D97706' }} />
+                    <span>Business Class Pricing</span>
+                  </h5>
+                  <div className="form-grid-3">
+                    <div className="form-group">
+                      <label htmlFor="genBusinessWindowPrice" className="form-label">
+                        Business Window Price (ETB)
+                      </label>
+                      <input
+                        id="genBusinessWindowPrice"
+                        type="number"
+                        min="0"
+                        step="50"
+                        className="form-input font-mono"
+                        value={genBusinessWindowPrice}
+                        onChange={(e) => setGenBusinessWindowPrice(e.target.value === '' ? '' : Number(e.target.value))}
+                        required
+                        disabled={actionLoading}
+                      />
+                      <span className="form-hint-xs">
+                        Formatted as {formatCurrency(genBusinessWindowPrice)}
+                      </span>
+                    </div>
+
+                    <div className="form-group">
+                      <label htmlFor="genBusinessMiddlePrice" className="form-label">
+                        Business Middle Price (ETB)
+                      </label>
+                      <input
+                        id="genBusinessMiddlePrice"
+                        type="number"
+                        min="0"
+                        step="50"
+                        className="form-input font-mono"
+                        value={genBusinessMiddlePrice}
+                        onChange={(e) => setGenBusinessMiddlePrice(e.target.value === '' ? '' : Number(e.target.value))}
+                        required
+                        disabled={actionLoading}
+                      />
+                      <span className="form-hint-xs">
+                        Formatted as {formatCurrency(genBusinessMiddlePrice)}
+                      </span>
+                    </div>
+
+                    <div className="form-group">
+                      <label htmlFor="genBusinessAislePrice" className="form-label">
+                        Business Aisle Price (ETB)
+                      </label>
+                      <input
+                        id="genBusinessAislePrice"
+                        type="number"
+                        min="0"
+                        step="50"
+                        className="form-input font-mono"
+                        value={genBusinessAislePrice}
+                        onChange={(e) => setGenBusinessAislePrice(e.target.value === '' ? '' : Number(e.target.value))}
+                        required
+                        disabled={actionLoading}
+                      />
+                      <span className="form-hint-xs">
+                        Formatted as {formatCurrency(genBusinessAislePrice)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ECONOMY CLASS PRICING */}
+                <div style={{ marginBottom: '16px' }}>
+                  <h5 className="sub-form-heading" style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
+                    <Users size={15} style={{ color: '#2563EB' }} />
+                    <span>Economy Class Pricing</span>
+                  </h5>
+                  <div className="form-grid-3">
+                    <div className="form-group">
+                      <label htmlFor="genEconomyWindowPrice" className="form-label">
+                        Economy Window Price (ETB)
+                      </label>
+                      <input
+                        id="genEconomyWindowPrice"
+                        type="number"
+                        min="0"
+                        step="50"
+                        className="form-input font-mono"
+                        value={genEconomyWindowPrice}
+                        onChange={(e) => setGenEconomyWindowPrice(e.target.value === '' ? '' : Number(e.target.value))}
+                        required
+                        disabled={actionLoading}
+                      />
+                      <span className="form-hint-xs">
+                        Formatted as {formatCurrency(genEconomyWindowPrice)}
+                      </span>
+                    </div>
+
+                    <div className="form-group">
+                      <label htmlFor="genEconomyMiddlePrice" className="form-label">
+                        Economy Middle Price (ETB)
+                      </label>
+                      <input
+                        id="genEconomyMiddlePrice"
+                        type="number"
+                        min="0"
+                        step="50"
+                        className="form-input font-mono"
+                        value={genEconomyMiddlePrice}
+                        onChange={(e) => setGenEconomyMiddlePrice(e.target.value === '' ? '' : Number(e.target.value))}
+                        required
+                        disabled={actionLoading}
+                      />
+                      <span className="form-hint-xs">
+                        Formatted as {formatCurrency(genEconomyMiddlePrice)}
+                      </span>
+                    </div>
+
+                    <div className="form-group">
+                      <label htmlFor="genEconomyAislePrice" className="form-label">
+                        Economy Aisle Price (ETB)
+                      </label>
+                      <input
+                        id="genEconomyAislePrice"
+                        type="number"
+                        min="0"
+                        step="50"
+                        className="form-input font-mono"
+                        value={genEconomyAislePrice}
+                        onChange={(e) => setGenEconomyAislePrice(e.target.value === '' ? '' : Number(e.target.value))}
+                        required
+                        disabled={actionLoading}
+                      />
+                      <span className="form-hint-xs">
+                        Formatted as {formatCurrency(genEconomyAislePrice)}
+                      </span>
+                    </div>
                   </div>
                 </div>
 
@@ -585,13 +738,13 @@ function AdminSeatModalInner({
                   <div className="summary-col">
                     <span className="sum-label">Total Aircraft Capacity</span>
                     <strong className="sum-val">
-                      {(genBusinessRows + genEconomyRows) * 6} Seats
+                      {(Number(genBusinessRows || 0) + Number(genEconomyRows || 0)) * 6} Seats
                     </strong>
                   </div>
                   <div className="summary-col">
                     <span className="sum-label">Cabin Breakdown</span>
                     <strong className="sum-val">
-                      {genBusinessRows * 6} Business &bull; {genEconomyRows * 6} Economy
+                      {Number(genBusinessRows || 0) * 6} Business &bull; {Number(genEconomyRows || 0) * 6} Economy
                     </strong>
                   </div>
                   <div className="summary-col">

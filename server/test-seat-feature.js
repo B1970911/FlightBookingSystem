@@ -521,6 +521,242 @@ async function runAllTests() {
         const raceFlightCheck = await apiRequest(`/api/flights/${raceFlightId}`, "GET");
         assert(raceFlightCheck.data.availableSeats === 1, `Expected 1 available seat left, got ${raceFlightCheck.data.availableSeats}`);
     });
+
+    // U. Enhanced Six-Price Position Specific Seat Generator Tests
+    let sixPriceFlightId;
+
+    await test("U1. Admin auto-generates seats with six position-specific prices (Window, Middle, Aisle)", async () => {
+        const createFlightRes = await apiRequest("/api/flights", "POST", {
+            flightNumber: "ET-505",
+            airline: "Ethiopian Airlines",
+            departureCity: "Addis Ababa",
+            arrivalCity: "Mekelle",
+            departureTime: new Date(Date.now() + 86400000).toISOString(),
+            arrivalTime: new Date(Date.now() + 90000000).toISOString(),
+            price: 2500,
+            totalSeats: 18,
+            availableSeats: 18,
+        }, adminToken);
+        assert(createFlightRes.status === 201, "Flight ET-505 created");
+        sixPriceFlightId = createFlightRes.data.flight._id;
+
+        const genRes = await apiRequest(`/api/flights/${sixPriceFlightId}/generate-seats`, "POST", {
+            businessRows: 1,
+            economyRows: 2,
+            businessWindowPrice: 5500,
+            businessMiddlePrice: 4800,
+            businessAislePrice: 5100,
+            economyWindowPrice: 3200,
+            economyMiddlePrice: 2800,
+            economyAislePrice: 3000,
+        }, adminToken);
+
+        assert(genRes.status === 200, `Expected 200, got ${genRes.status}`);
+        const seats = genRes.data.flight.seats;
+        assert(seats.length === 18, `Expected 18 seats, got ${seats.length}`);
+
+        const findSeat = (num) => seats.find((s) => s.seatNumber === num);
+
+        // Business Window gets businessWindowPrice
+        const seat1A = findSeat("1A");
+        const seat1F = findSeat("1F");
+        assert(seat1A && seat1A.seatClass === "Business" && seat1A.position === "Window" && seat1A.price === 5500, "Business Window 1A price is 5500");
+        assert(seat1F && seat1F.seatClass === "Business" && seat1F.position === "Window" && seat1F.price === 5500, "Business Window 1F price is 5500");
+
+        // Business Middle gets businessMiddlePrice
+        const seat1B = findSeat("1B");
+        const seat1E = findSeat("1E");
+        assert(seat1B && seat1B.seatClass === "Business" && seat1B.position === "Middle" && seat1B.price === 4800, "Business Middle 1B price is 4800");
+        assert(seat1E && seat1E.seatClass === "Business" && seat1E.position === "Middle" && seat1E.price === 4800, "Business Middle 1E price is 4800");
+
+        // Business Aisle gets businessAislePrice
+        const seat1C = findSeat("1C");
+        const seat1D = findSeat("1D");
+        assert(seat1C && seat1C.seatClass === "Business" && seat1C.position === "Aisle" && seat1C.price === 5100, "Business Aisle 1C price is 5100");
+        assert(seat1D && seat1D.seatClass === "Business" && seat1D.position === "Aisle" && seat1D.price === 5100, "Business Aisle 1D price is 5100");
+
+        // Economy Window gets economyWindowPrice
+        const seat2A = findSeat("2A");
+        const seat2F = findSeat("2F");
+        assert(seat2A && seat2A.seatClass === "Economy" && seat2A.position === "Window" && seat2A.price === 3200, "Economy Window 2A price is 3200");
+        assert(seat2F && seat2F.seatClass === "Economy" && seat2F.position === "Window" && seat2F.price === 3200, "Economy Window 2F price is 3200");
+
+        // Economy Middle gets economyMiddlePrice
+        const seat2B = findSeat("2B");
+        const seat2E = findSeat("2E");
+        assert(seat2B && seat2B.seatClass === "Economy" && seat2B.position === "Middle" && seat2B.price === 2800, "Economy Middle 2B price is 2800");
+        assert(seat2E && seat2E.seatClass === "Economy" && seat2E.position === "Middle" && seat2E.price === 2800, "Economy Middle 2E price is 2800");
+
+        // Economy Aisle gets economyAislePrice
+        const seat2C = findSeat("2C");
+        const seat2D = findSeat("2D");
+        assert(seat2C && seat2C.seatClass === "Economy" && seat2C.position === "Aisle" && seat2C.price === 3000, "Economy Aisle 2C price is 3000");
+        assert(seat2D && seat2D.seatClass === "Economy" && seat2D.position === "Aisle" && seat2D.price === 3000, "Economy Aisle 2D price is 3000");
+    });
+
+    await test("U2. Mixed-seat booking calculates the exact sum of individual position seat prices", async () => {
+        // Book 1A (Business Window: 5500), 2B (Economy Middle: 2800), 2C (Economy Aisle: 3000)
+        // Total: 5500 + 2800 + 3000 = 11300 ETB
+        const bookRes = await apiRequest("/api/bookings", "POST", {
+            flightId: sixPriceFlightId,
+            selectedSeats: ["1A", "2B", "2C"],
+            totalPrice: 100, // untrusted manipulated price sent by client
+        }, user1Token);
+
+        assert(bookRes.status === 201, `Expected 201, got ${bookRes.status}: ${JSON.stringify(bookRes.data)}`);
+        assert(bookRes.data.totalPrice === 11300, `Expected server-calculated totalPrice 11300, got ${bookRes.data.totalPrice}`);
+        assert(bookRes.data.numberOfSeats === 3, "numberOfSeats is 3");
+        assert(bookRes.data.selectedSeats.length === 3, "selectedSeats length is 3");
+        assert(bookRes.data.seatDetails.length === 3, "seatDetails length is 3");
+
+        const sd1A = bookRes.data.seatDetails.find((s) => s.seatNumber === "1A");
+        const sd2B = bookRes.data.seatDetails.find((s) => s.seatNumber === "2B");
+        const sd2C = bookRes.data.seatDetails.find((s) => s.seatNumber === "2C");
+        assert(sd1A && sd1A.price === 5500, "1A seat price recorded as 5500");
+        assert(sd2B && sd2B.price === 2800, "2B seat price recorded as 2800");
+        assert(sd2C && sd2C.price === 3000, "2C seat price recorded as 3000");
+    });
+
+    await test("U3. Generator validation rejects negative prices with 400", async () => {
+        const flightValRes = await apiRequest("/api/flights", "POST", {
+            flightNumber: "ET-506",
+            airline: "Ethiopian Airlines",
+            departureCity: "Addis Ababa",
+            arrivalCity: "Jijiga",
+            departureTime: new Date(Date.now() + 86400000).toISOString(),
+            arrivalTime: new Date(Date.now() + 90000000).toISOString(),
+            price: 2400,
+            totalSeats: 12,
+            availableSeats: 12,
+        }, adminToken);
+        const valFlightId = flightValRes.data.flight._id;
+
+        // Negative businessWindowPrice
+        const res1 = await apiRequest(`/api/flights/${valFlightId}/generate-seats`, "POST", {
+            businessRows: 1,
+            economyRows: 1,
+            businessWindowPrice: -100,
+            businessMiddlePrice: 4800,
+            businessAislePrice: 5100,
+            economyWindowPrice: 3200,
+            economyMiddlePrice: 2800,
+            economyAislePrice: 3000,
+        }, adminToken);
+        assert(res1.status === 400, `Expected 400 for negative businessWindowPrice, got ${res1.status}`);
+
+        // Negative economyMiddlePrice
+        const res2 = await apiRequest(`/api/flights/${valFlightId}/generate-seats`, "POST", {
+            businessRows: 1,
+            economyRows: 1,
+            businessWindowPrice: 5500,
+            businessMiddlePrice: 4800,
+            businessAislePrice: 5100,
+            economyWindowPrice: 3200,
+            economyMiddlePrice: -2800,
+            economyAislePrice: 3000,
+        }, adminToken);
+        assert(res2.status === 400, `Expected 400 for negative economyMiddlePrice, got ${res2.status}`);
+    });
+
+    await test("U4. Generator validation rejects missing position prices with 400", async () => {
+        const flightValRes = await apiRequest("/api/flights", "POST", {
+            flightNumber: "ET-507",
+            airline: "Ethiopian Airlines",
+            departureCity: "Addis Ababa",
+            arrivalCity: "Arba Minch",
+            departureTime: new Date(Date.now() + 86400000).toISOString(),
+            arrivalTime: new Date(Date.now() + 90000000).toISOString(),
+            price: 2400,
+            totalSeats: 12,
+            availableSeats: 12,
+        }, adminToken);
+        const valFlightId = flightValRes.data.flight._id;
+
+        // Missing economyAislePrice
+        const res1 = await apiRequest(`/api/flights/${valFlightId}/generate-seats`, "POST", {
+            businessRows: 1,
+            economyRows: 1,
+            businessWindowPrice: 5500,
+            businessMiddlePrice: 4800,
+            businessAislePrice: 5100,
+            economyWindowPrice: 3200,
+            economyMiddlePrice: 2800,
+        }, adminToken);
+        assert(res1.status === 400, `Expected 400 for missing economyAislePrice, got ${res1.status}`);
+
+        // Missing businessMiddlePrice
+        const res2 = await apiRequest(`/api/flights/${valFlightId}/generate-seats`, "POST", {
+            businessRows: 1,
+            economyRows: 1,
+            businessWindowPrice: 5500,
+            businessAislePrice: 5100,
+            economyWindowPrice: 3200,
+            economyMiddlePrice: 2800,
+            economyAislePrice: 3000,
+        }, adminToken);
+        assert(res2.status === 400, `Expected 400 for missing businessMiddlePrice, got ${res2.status}`);
+
+        // Missing all position prices (only row counts)
+        const res3 = await apiRequest(`/api/flights/${valFlightId}/generate-seats`, "POST", {
+            businessRows: 1,
+            economyRows: 1,
+        }, adminToken);
+        assert(res3.status === 400, `Expected 400 when all prices are missing, got ${res3.status}`);
+    });
+
+    await test("U5. Generator validation rejects non-numeric prices and invalid row counts with 400", async () => {
+        const flightValRes = await apiRequest("/api/flights", "POST", {
+            flightNumber: "ET-508",
+            airline: "Ethiopian Airlines",
+            departureCity: "Addis Ababa",
+            arrivalCity: "Semera",
+            departureTime: new Date(Date.now() + 86400000).toISOString(),
+            arrivalTime: new Date(Date.now() + 90000000).toISOString(),
+            price: 2400,
+            totalSeats: 12,
+            availableSeats: 12,
+        }, adminToken);
+        const valFlightId = flightValRes.data.flight._id;
+
+        // Non-numeric price
+        const res1 = await apiRequest(`/api/flights/${valFlightId}/generate-seats`, "POST", {
+            businessRows: 1,
+            economyRows: 1,
+            businessWindowPrice: "invalid_price",
+            businessMiddlePrice: 4800,
+            businessAislePrice: 5100,
+            economyWindowPrice: 3200,
+            economyMiddlePrice: 2800,
+            economyAislePrice: 3000,
+        }, adminToken);
+        assert(res1.status === 400, `Expected 400 for non-numeric price, got ${res1.status}`);
+
+        // Negative businessRows
+        const res2 = await apiRequest(`/api/flights/${valFlightId}/generate-seats`, "POST", {
+            businessRows: -1,
+            economyRows: 1,
+            businessWindowPrice: 5500,
+            businessMiddlePrice: 4800,
+            businessAislePrice: 5100,
+            economyWindowPrice: 3200,
+            economyMiddlePrice: 2800,
+            economyAislePrice: 3000,
+        }, adminToken);
+        assert(res2.status === 400, `Expected 400 for negative businessRows, got ${res2.status}`);
+
+        // Zero economyRows
+        const res3 = await apiRequest(`/api/flights/${valFlightId}/generate-seats`, "POST", {
+            businessRows: 1,
+            economyRows: 0,
+            businessWindowPrice: 5500,
+            businessMiddlePrice: 4800,
+            businessAislePrice: 5100,
+            economyWindowPrice: 3200,
+            economyMiddlePrice: 2800,
+            economyAislePrice: 3000,
+        }, adminToken);
+        assert(res3.status === 400, `Expected 400 for zero economyRows, got ${res3.status}`);
+    });
 }
 
 async function main() {

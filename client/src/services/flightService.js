@@ -69,7 +69,7 @@ export const flightService = {
   /**
    * Auto-generate standard flight seat map (Admin only)
    * @param {string} id - Flight ID
-   * @param {Object} options - { economyPrice, businessPrice, businessRows, economyRows }
+   * @param {Object} options - { businessRows, economyRows, businessWindowPrice, businessMiddlePrice, businessAislePrice, economyWindowPrice, economyMiddlePrice, economyAislePrice }
    * @returns {Promise<{ message: string, flight: Object }>}
    */
   async generateFlightSeats(id, options = {}) {

@@ -290,23 +290,107 @@ const generateFlightSeats = async (req, res) => {
             });
         }
 
-        const economyPrice =
-            typeof req.body.economyPrice === "number" && req.body.economyPrice >= 0
-                ? req.body.economyPrice
-                : flight.price;
-        const businessPrice =
-            typeof req.body.businessPrice === "number" && req.body.businessPrice >= 0
-                ? req.body.businessPrice
-                : Math.round(economyPrice * 1.5);
+        const positionPriceKeys = [
+            "businessWindowPrice",
+            "businessMiddlePrice",
+            "businessAislePrice",
+            "economyWindowPrice",
+            "economyMiddlePrice",
+            "economyAislePrice",
+        ];
 
-        const businessRows =
-            typeof req.body.businessRows === "number" && req.body.businessRows >= 0
-                ? req.body.businessRows
-                : 2;
-        const economyRows =
-            typeof req.body.economyRows === "number" && req.body.economyRows > 0
-                ? req.body.economyRows
-                : 8;
+        const hasAnyPositionPrice = positionPriceKeys.some(
+            (key) => req.body[key] !== undefined
+        );
+
+        const isLegacyGenerate =
+            !hasAnyPositionPrice &&
+            (req.body.economyPrice !== undefined || req.body.businessPrice !== undefined);
+
+        let businessRows;
+        let economyRows;
+        let businessPrice;
+        let economyPrice;
+
+        if (isLegacyGenerate) {
+            if (
+                req.body.economyPrice !== undefined &&
+                (typeof req.body.economyPrice !== "number" || req.body.economyPrice < 0 || isNaN(req.body.economyPrice))
+            ) {
+                return res.status(400).json({ message: "economyPrice must be a non-negative number" });
+            }
+            if (
+                req.body.businessPrice !== undefined &&
+                (typeof req.body.businessPrice !== "number" || req.body.businessPrice < 0 || isNaN(req.body.businessPrice))
+            ) {
+                return res.status(400).json({ message: "businessPrice must be a non-negative number" });
+            }
+
+            economyPrice =
+                typeof req.body.economyPrice === "number" && req.body.economyPrice >= 0
+                    ? req.body.economyPrice
+                    : flight.price;
+            businessPrice =
+                typeof req.body.businessPrice === "number" && req.body.businessPrice >= 0
+                    ? req.body.businessPrice
+                    : Math.round(economyPrice * 1.5);
+
+            businessRows =
+                typeof req.body.businessRows === "number" && req.body.businessRows >= 0
+                    ? req.body.businessRows
+                    : 2;
+            economyRows =
+                typeof req.body.economyRows === "number" && req.body.economyRows > 0
+                    ? req.body.economyRows
+                    : 8;
+        } else {
+            // New 6-position price configuration: Validate row counts
+            if (
+                req.body.businessRows === undefined ||
+                typeof req.body.businessRows !== "number" ||
+                isNaN(req.body.businessRows) ||
+                !Number.isInteger(req.body.businessRows) ||
+                req.body.businessRows < 0
+            ) {
+                return res.status(400).json({
+                    message: "businessRows must be a non-negative integer",
+                });
+            }
+
+            if (
+                req.body.economyRows === undefined ||
+                typeof req.body.economyRows !== "number" ||
+                isNaN(req.body.economyRows) ||
+                !Number.isInteger(req.body.economyRows) ||
+                req.body.economyRows < 1
+            ) {
+                return res.status(400).json({
+                    message: "economyRows must be an integer of at least 1",
+                });
+            }
+
+            businessRows = req.body.businessRows;
+            economyRows = req.body.economyRows;
+
+            // Validate all 6 position prices: missing, non-numeric, negative
+            for (const key of positionPriceKeys) {
+                if (req.body[key] === undefined || req.body[key] === null || req.body[key] === "") {
+                    return res.status(400).json({
+                        message: `Missing required price: ${key}`,
+                    });
+                }
+                if (typeof req.body[key] !== "number" || isNaN(req.body[key])) {
+                    return res.status(400).json({
+                        message: `Price ${key} must be a valid number`,
+                    });
+                }
+                if (req.body[key] < 0) {
+                    return res.status(400).json({
+                        message: `Price ${key} must be a non-negative number`,
+                    });
+                }
+            }
+        }
 
         const letters = ["A", "B", "C", "D", "E", "F"];
         const positionMap = {
@@ -319,28 +403,45 @@ const generateFlightSeats = async (req, res) => {
         };
 
         const generatedSeats = [];
+        const totalRows = businessRows + economyRows;
 
-        // Business rows (1 to businessRows)
-        for (let r = 1; r <= businessRows; r++) {
+        for (let r = 1; r <= totalRows; r++) {
             for (const letter of letters) {
+                // Determine position first: A/F = Window, B/E = Middle, C/D = Aisle
+                const position = positionMap[letter];
+
+                // Determine cabin class
+                const seatClass = r <= businessRows ? "Business" : "Economy";
+
+                // Assign price using position and cabin class
+                let price;
+                if (isLegacyGenerate) {
+                    price = seatClass === "Business" ? businessPrice : economyPrice;
+                } else {
+                    if (seatClass === "Business") {
+                        if (position === "Window") {
+                            price = req.body.businessWindowPrice;
+                        } else if (position === "Middle") {
+                            price = req.body.businessMiddlePrice;
+                        } else {
+                            price = req.body.businessAislePrice;
+                        }
+                    } else {
+                        if (position === "Window") {
+                            price = req.body.economyWindowPrice;
+                        } else if (position === "Middle") {
+                            price = req.body.economyMiddlePrice;
+                        } else {
+                            price = req.body.economyAislePrice;
+                        }
+                    }
+                }
+
                 generatedSeats.push({
                     seatNumber: `${r}${letter}`,
-                    seatClass: "Business",
-                    position: positionMap[letter],
-                    price: businessPrice,
-                    status: "Available",
-                });
-            }
-        }
-
-        // Economy rows (businessRows + 1 to businessRows + economyRows)
-        for (let r = businessRows + 1; r <= businessRows + economyRows; r++) {
-            for (const letter of letters) {
-                generatedSeats.push({
-                    seatNumber: `${r}${letter}`,
-                    seatClass: "Economy",
-                    position: positionMap[letter],
-                    price: economyPrice,
+                    seatClass,
+                    position,
+                    price,
                     status: "Available",
                 });
             }
