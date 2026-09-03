@@ -1,9 +1,13 @@
 const { Resend } = require("resend");
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-
 const sendEmail = async (to, subject, html) => {
     try {
+        if (!process.env.RESEND_API_KEY) {
+            console.warn("⚠️ RESEND_API_KEY not configured. Skipping email dispatch.");
+            return;
+        }
+
+        const resend = new Resend(process.env.RESEND_API_KEY);
         const { data, error } = await resend.emails.send({
             from: "SkyLink Ethiopia <noreply@flightbooking.de5.net>",
             to: [to],

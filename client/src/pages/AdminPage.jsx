@@ -6,6 +6,7 @@ import {
   AdminFlightsTable,
   AdminBookingsTable,
   FlightFormModal,
+  AdminSeatModal,
   ConfirmModal,
 } from '../components';
 import {
@@ -41,6 +42,9 @@ export function AdminPage() {
   const [isFlightModalOpen, setIsFlightModalOpen] = useState(false);
   const [editingFlight, setEditingFlight] = useState(null);
   const [flightModalLoading, setFlightModalLoading] = useState(false);
+
+  // Seat Management Modal state
+  const [managingSeatsFlight, setManagingSeatsFlight] = useState(null);
 
   // Delete Flight Modal state
   const [deletingFlight, setDeletingFlight] = useState(null);
@@ -156,6 +160,21 @@ export function AdminPage() {
   const handleOpenEditFlight = (flight) => {
     setEditingFlight(flight);
     setIsFlightModalOpen(true);
+  };
+
+  // Open Manage Seats Modal
+  const handleOpenManageSeats = (flight) => {
+    setManagingSeatsFlight(flight);
+  };
+
+  // Handle Seat Map Updated from Modal
+  const handleSeatModalSuccess = (updatedFlight) => {
+    const flightId = updatedFlight._id || updatedFlight.id;
+    setFlights((prev) =>
+      prev.map((f) => ((f._id || f.id) === flightId ? updatedFlight : f))
+    );
+    setSuccessMessage(`Seat map for flight ${updatedFlight.flightNumber} updated successfully.`);
+    loadAdminData(true);
   };
 
   // Handle Flight Submit (Create or Update)
@@ -380,6 +399,7 @@ export function AdminPage() {
                 onAddNewFlight={handleOpenCreateFlight}
                 onEditFlight={handleOpenEditFlight}
                 onDeleteFlight={(flight) => setDeletingFlight(flight)}
+                onManageSeats={handleOpenManageSeats}
               />
             </div>
 
@@ -417,6 +437,7 @@ export function AdminPage() {
             onAddNewFlight={handleOpenCreateFlight}
             onEditFlight={handleOpenEditFlight}
             onDeleteFlight={(flight) => setDeletingFlight(flight)}
+            onManageSeats={handleOpenManageSeats}
           />
         </div>
       )}
@@ -442,6 +463,14 @@ export function AdminPage() {
         }}
         onSubmit={handleFlightSubmit}
         loading={flightModalLoading}
+      />
+
+      {/* Admin Seat Management Modal */}
+      <AdminSeatModal
+        isOpen={Boolean(managingSeatsFlight)}
+        flight={managingSeatsFlight}
+        onClose={() => setManagingSeatsFlight(null)}
+        onSuccess={handleSeatModalSuccess}
       />
 
       {/* Delete Flight Confirmation Modal */}
@@ -474,3 +503,4 @@ export function AdminPage() {
 }
 
 export default AdminPage;
+

@@ -14,6 +14,7 @@ import {
   Search,
   ArrowRight,
   Ban,
+  Armchair,
 } from 'lucide-react';
 
 export function BookingsPage() {
@@ -216,10 +217,19 @@ export function BookingsPage() {
                       <Calendar size={14} />
                       {flight.departureTime ? formatDate(flight.departureTime) : 'Date N/A'}
                     </span>
-                    <span className="booking-meta-item">
-                      <Users size={14} />
-                      {booking.numberOfSeats} {booking.numberOfSeats === 1 ? 'Seat' : 'Seats'}
-                    </span>
+                    {booking.selectedSeats && booking.selectedSeats.length > 0 ? (
+                      <span className="booking-meta-item seats-highlight">
+                        <Armchair size={14} />
+                        <span>
+                          Seats: <strong>{booking.selectedSeats.join(', ')}</strong> ({booking.numberOfSeats} {booking.numberOfSeats === 1 ? 'seat' : 'seats'})
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="booking-meta-item">
+                        <Users size={14} />
+                        {booking.numberOfSeats} {booking.numberOfSeats === 1 ? 'Seat' : 'Seats'}
+                      </span>
+                    )}
                   </div>
                 </div>
 

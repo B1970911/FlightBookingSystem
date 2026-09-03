@@ -46,6 +46,36 @@ export const flightService = {
   async deleteFlight(id) {
     return api.delete(`/api/flights/${id}`);
   },
+
+  /**
+   * Get flight seat map and configured seats
+   * @param {string} id - Flight ID
+   * @returns {Promise<{ flightId: string, flightNumber: string, totalSeats: number, availableSeats: number, seats: Array }>}
+   */
+  async getFlightSeats(id) {
+    return api.get(`/api/flights/${id}/seats`);
+  },
+
+  /**
+   * Configure custom flight seat map (Admin only)
+   * @param {string} id - Flight ID
+   * @param {Array} seats - Array of seat objects [{ seatNumber, seatClass, position, price, status }]
+   * @returns {Promise<{ message: string, flight: Object }>}
+   */
+  async configureFlightSeats(id, seats) {
+    return api.put(`/api/flights/${id}/seats`, { seats });
+  },
+
+  /**
+   * Auto-generate standard flight seat map (Admin only)
+   * @param {string} id - Flight ID
+   * @param {Object} options - { economyPrice, businessPrice, businessRows, economyRows }
+   * @returns {Promise<{ message: string, flight: Object }>}
+   */
+  async generateFlightSeats(id, options = {}) {
+    return api.post(`/api/flights/${id}/generate-seats`, options);
+  },
 };
 
 export default flightService;
+

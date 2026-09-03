@@ -23,6 +23,9 @@ import {
   User,
   Mail,
   Loader2,
+  Armchair,
+  Crown,
+  Sparkles,
 } from 'lucide-react';
 
 export function BookingDetailsPage() {
@@ -246,7 +249,7 @@ export function BookingDetailsPage() {
             </div>
           </div>
 
-          {/* Flight Itinerary */}
+              {/* Flight Itinerary */}
           <div className="details-journey-box">
             <h3 className="section-subheading">
               Flight Itinerary &bull; {flight.airline || 'SkyLink'} ({flight.flightNumber || 'N/A'})
@@ -292,6 +295,71 @@ export function BookingDetailsPage() {
               </div>
             </div>
           </div>
+
+          {/* Reserved Seats Details (If Seat Selection was used) */}
+          {booking.selectedSeats && booking.selectedSeats.length > 0 && (
+            <div className="booking-seats-breakdown-box">
+              <div className="details-section-header">
+                <div className="section-title-with-icon">
+                  <Armchair size={18} className="section-header-icon" />
+                  <h3 className="section-subheading">Assigned Cabin Seats</h3>
+                </div>
+                <span className="section-header-badge">
+                  {booking.selectedSeats.length}{' '}
+                  {booking.selectedSeats.length === 1 ? 'Seat Assigned' : 'Seats Assigned'}
+                </span>
+              </div>
+
+              <div className="booked-seats-cards-grid">
+                {booking.seatDetails && booking.seatDetails.length > 0 ? (
+                  booking.seatDetails.map((seat) => (
+                    <div key={seat.seatNumber} className="booked-seat-detail-card">
+                      <div className="booked-seat-header">
+                        <div className="booked-seat-code font-mono">{seat.seatNumber}</div>
+                        <span
+                          className={`seat-class-badge ${
+                            seat.seatClass === 'Business' ? 'business' : 'economy'
+                          }`}
+                        >
+                          {seat.seatClass === 'Business' ? (
+                            <>
+                              <Crown size={10} />
+                              <span>Business</span>
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles size={10} />
+                              <span>Economy</span>
+                            </>
+                          )}
+                        </span>
+                      </div>
+                      <div className="booked-seat-body">
+                        <span className="booked-seat-pos">{seat.position} Seat</span>
+                        {seat.price !== undefined && (
+                          <span className="booked-seat-price font-mono">
+                            {formatCurrency(seat.price)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  booking.selectedSeats.map((seatNum) => (
+                    <div key={seatNum} className="booked-seat-detail-card simple">
+                      <div className="booked-seat-header">
+                        <span className="booked-seat-code font-mono">{seatNum}</span>
+                        <span className="seat-class-badge economy">Reserved</span>
+                      </div>
+                      <div className="booked-seat-body">
+                        <span className="booked-seat-pos">Confirmed Seat</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
         </section>
 
         {/* Sidebar Actions & Fare */}
@@ -301,7 +369,11 @@ export function BookingDetailsPage() {
           <div className="fare-breakdown-box">
             <div className="fare-row">
               <span>Booked Seats</span>
-              <span>{booking.numberOfSeats}</span>
+              <span>
+                {booking.selectedSeats && booking.selectedSeats.length > 0
+                  ? booking.selectedSeats.join(', ')
+                  : `${booking.numberOfSeats} Seat(s)`}
+              </span>
             </div>
             <div className="fare-divider" />
             <div className="fare-row total">

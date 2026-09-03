@@ -10,6 +10,7 @@ import {
   Filter,
   Calendar,
   ArrowRight,
+  Armchair,
 } from 'lucide-react';
 
 export function AdminFlightsTable({
@@ -18,6 +19,7 @@ export function AdminFlightsTable({
   onAddNewFlight,
   onEditFlight,
   onDeleteFlight,
+  onManageSeats,
 }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
@@ -205,6 +207,17 @@ export function AdminFlightsTable({
                             title={`${occupancyPercent}% booked (${booked}/${total})`}
                           />
                         </div>
+                        <div className="seat-config-meta">
+                          {flight.seats && flight.seats.length > 0 ? (
+                            <span className="seat-config-pill configured">
+                              Map Configured ({flight.seats.length})
+                            </span>
+                          ) : (
+                            <span className="seat-config-pill open">
+                              Open Capacity
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </td>
 
@@ -226,6 +239,16 @@ export function AdminFlightsTable({
                     {/* Actions */}
                     <td className="text-right">
                       <div className="admin-row-actions">
+                        <button
+                          type="button"
+                          className="btn-icon-action seats"
+                          onClick={() => onManageSeats && onManageSeats(flight)}
+                          title="Manage Seats & Cabin Map"
+                          aria-label={`Manage seats for flight ${flight.flightNumber}`}
+                        >
+                          <Armchair size={15} />
+                        </button>
+
                         <button
                           type="button"
                           className="btn-icon-action edit"

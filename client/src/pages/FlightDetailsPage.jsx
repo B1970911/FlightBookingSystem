@@ -7,6 +7,7 @@ import {
   formatTime,
   formatFlightDuration,
 } from '../utils/formatDate';
+import { SeatMap } from '../components/flights/SeatMap';
 import {
   Plane,
   ArrowLeft,
@@ -17,6 +18,7 @@ import {
   Ticket,
   Calendar,
   CheckCircle2,
+  Armchair,
 } from 'lucide-react';
 
 export function FlightDetailsPage() {
@@ -24,6 +26,7 @@ export function FlightDetailsPage() {
   const navigate = useNavigate();
 
   const [flight, setFlight] = useState(null);
+  const [seats, setSeats] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -36,9 +39,14 @@ export function FlightDetailsPage() {
       setError(null);
 
       try {
-        const data = await flightService.getFlightById(id);
+        const [flightData, seatData] = await Promise.all([
+          flightService.getFlightById(id),
+          flightService.getFlightSeats(id).catch(() => ({ seats: [] })),
+        ]);
+
         if (isMounted) {
-          setFlight(data);
+          setFlight(flightData);
+          setSeats(Array.isArray(seatData?.seats) ? seatData.seats : []);
         }
       } catch (err) {
         if (isMounted) {
@@ -239,6 +247,33 @@ export function FlightDetailsPage() {
               </div>
             </div>
           </div>
+
+          {/* Cabin & Seat Map Section (Only if flight has configured seats) */}
+          {seats && seats.length > 0 && (
+            <div className="details-seatmap-box">
+              <div className="details-section-header">
+                <div className="section-title-with-icon">
+                  <Armchair size={20} className="section-header-icon" />
+                  <h2 className="section-subheading">Aircraft Cabin &amp; Seat Map</h2>
+                </div>
+                <span className="section-header-badge">
+                  {seats.length} Total Configured Seats
+                </span>
+              </div>
+              <p className="details-seatmap-desc">
+                Preview cabin layout, seat positions (Window, Aisle, Middle), and individual ETB seat pricing. Interactive seat selection is enabled during booking.
+              </p>
+              <div className="details-seatmap-inner">
+                <SeatMap
+                  seats={seats}
+                  selectable={false}
+                  readOnly={true}
+                  showPrices={true}
+                  showLegend={true}
+                />
+              </div>
+            </div>
+          )}
         </section>
 
         {/* Sidebar Summary & Booking Call to Action */}

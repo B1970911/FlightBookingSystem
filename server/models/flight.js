@@ -1,5 +1,37 @@
 const mongoose = require("mongoose");
 
+const seatSchema = new mongoose.Schema(
+    {
+        seatNumber: {
+            type: String,
+            required: true,
+            trim: true,
+        },
+        seatClass: {
+            type: String,
+            required: true,
+            enum: ["Economy", "Business"],
+        },
+        position: {
+            type: String,
+            required: true,
+            enum: ["Window", "Middle", "Aisle"],
+        },
+        price: {
+            type: Number,
+            required: true,
+            min: 0,
+        },
+        status: {
+            type: String,
+            required: true,
+            enum: ["Available", "Booked"],
+            default: "Available",
+        },
+    },
+    { _id: false }
+);
+
 const flightSchema = new mongoose.Schema(
     {
         flightNumber: {
@@ -53,6 +85,11 @@ const flightSchema = new mongoose.Schema(
             type: Number,
             required: true,
             min: 0,
+        },
+
+        seats: {
+            type: [seatSchema],
+            default: [],
         },
 
         status: {
