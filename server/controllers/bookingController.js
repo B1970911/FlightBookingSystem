@@ -23,7 +23,7 @@ const createBooking = async (req, res) => {
 
         if (flight.status === "Cancelled") {
             return res.status(400).json({
-                message: "Cannot book seats on a cancelled flight",
+                message: "Cannot book a cancelled flight.",
             });
         }
 

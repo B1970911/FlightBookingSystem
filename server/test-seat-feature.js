@@ -757,6 +757,313 @@ async function runAllTests() {
         }, adminToken);
         assert(res3.status === 400, `Expected 400 for zero economyRows, got ${res3.status}`);
     });
+
+    // =========================================================================
+    // SAFE FLIGHT DELETION & CANCELLATION TESTS (A through J)
+    // =========================================================================
+
+    let safeFlightNoBookingsId;
+    let safeFlightOneBookingId;
+    let safeFlightMultiBookingId;
+    let safeFlightToCancelId;
+    let confirmedBookingId1;
+    let confirmedBookingId2;
+
+    // A. Delete flight with no confirmed bookings -> succeeds
+    await test("Safe Flight Deletion A. Delete flight with no confirmed bookings succeeds", async () => {
+        const createRes = await apiRequest("/api/flights", "POST", {
+            flightNumber: "ET-DEL-001",
+            airline: "Ethiopian Airlines",
+            departureCity: "Addis Ababa",
+            arrivalCity: "Mekelle",
+            departureTime: new Date(Date.now() + 86400000).toISOString(),
+            arrivalTime: new Date(Date.now() + 90000000).toISOString(),
+            price: 3000,
+            totalSeats: 50,
+            availableSeats: 50,
+        }, adminToken);
+        assert(createRes.status === 201, `Failed to create flight: ${createRes.status}`);
+        safeFlightNoBookingsId = createRes.data.flight._id;
+
+        const delRes = await apiRequest(`/api/flights/${safeFlightNoBookingsId}`, "DELETE", null, adminToken);
+        assert(delRes.status === 200, `Expected 200 on delete flight with no confirmed bookings, got ${delRes.status}`);
+        assert(delRes.data.message === "Flight deleted successfully", `Unexpected message: ${delRes.data.message}`);
+
+        // Verify flight no longer exists
+        const getRes = await apiRequest(`/api/flights/${safeFlightNoBookingsId}`, "GET");
+        assert(getRes.status === 404, `Expected 404 for deleted flight, got ${getRes.status}`);
+    });
+
+    // A2. Delete flight with only cancelled booking succeeds and preserves booking record
+    await test("Safe Flight Deletion A2. Delete flight with only cancelled booking succeeds and preserves booking record", async () => {
+        const createRes = await apiRequest("/api/flights", "POST", {
+            flightNumber: "ET-DEL-002",
+            airline: "Ethiopian Airlines",
+            departureCity: "Addis Ababa",
+            arrivalCity: "Dire Dawa",
+            departureTime: new Date(Date.now() + 86400000).toISOString(),
+            arrivalTime: new Date(Date.now() + 90000000).toISOString(),
+            price: 2500,
+            totalSeats: 30,
+            availableSeats: 30,
+        }, adminToken);
+        const flightId = createRes.data.flight._id;
+
+        // User books
+        const bookRes = await apiRequest("/api/bookings", "POST", {
+            flightId,
+            numberOfSeats: 1,
+        }, user1Token);
+        assert(bookRes.status === 201, `Failed to book flight: ${bookRes.status}`);
+        const bookingId = bookRes.data._id;
+
+        // User cancels booking
+        const cancelBookRes = await apiRequest(`/api/bookings/${bookingId}/cancel`, "PUT", null, user1Token);
+        assert(cancelBookRes.status === 200, `Failed to cancel booking: ${cancelBookRes.status}`);
+
+        // Now admin deletes flight (active bookings = 0, cancelled bookings = 1)
+        const delRes = await apiRequest(`/api/flights/${flightId}`, "DELETE", null, adminToken);
+        assert(delRes.status === 200, `Expected 200 on deleting flight with zero confirmed bookings, got ${delRes.status}`);
+
+        // Ensure booking record still exists and was not deleted as a side effect
+        const checkBookingRes = await apiRequest(`/api/bookings/${bookingId}`, "GET", null, user1Token);
+        assert(checkBookingRes.status === 200, `Booking record should still exist, got ${checkBookingRes.status}`);
+        assert(checkBookingRes.data.bookingStatus === "Cancelled", "Booking status should remain Cancelled");
+    });
+
+    // B. Delete flight with one confirmed booking -> HTTP 409
+    await test("Safe Flight Deletion B. Delete flight with one confirmed booking returns HTTP 409", async () => {
+        const createRes = await apiRequest("/api/flights", "POST", {
+            flightNumber: "ET-DEL-003",
+            airline: "Ethiopian Airlines",
+            departureCity: "Addis Ababa",
+            arrivalCity: "Bahir Dar",
+            departureTime: new Date(Date.now() + 86400000).toISOString(),
+            arrivalTime: new Date(Date.now() + 90000000).toISOString(),
+            price: 2800,
+            totalSeats: 20,
+            availableSeats: 20,
+        }, adminToken);
+        safeFlightOneBookingId = createRes.data.flight._id;
+
+        // User 1 creates a confirmed booking
+        const bookRes = await apiRequest("/api/bookings", "POST", {
+            flightId: safeFlightOneBookingId,
+            numberOfSeats: 2,
+        }, user1Token);
+        assert(bookRes.status === 201, `Failed to book: ${bookRes.status}`);
+
+        // Admin attempts deletion
+        const delRes = await apiRequest(`/api/flights/${safeFlightOneBookingId}`, "DELETE", null, adminToken);
+        assert(delRes.status === 409, `Expected 409 on deleting flight with 1 confirmed booking, got ${delRes.status}`);
+        assert(delRes.data.activeBookings === 1, `Expected activeBookings: 1, got ${delRes.data.activeBookings}`);
+        assert(delRes.data.message === "Cannot delete flight because it has active bookings.", `Unexpected message: ${delRes.data.message}`);
+
+        // Verify flight was NOT deleted
+        const getRes = await apiRequest(`/api/flights/${safeFlightOneBookingId}`, "GET");
+        assert(getRes.status === 200, `Flight should still exist, got ${getRes.status}`);
+    });
+
+    // C. Delete flight with multiple confirmed bookings -> HTTP 409 and correct activeBookings count
+    await test("Safe Flight Deletion C. Delete flight with multiple confirmed bookings returns HTTP 409 and correct count", async () => {
+        const createRes = await apiRequest("/api/flights", "POST", {
+            flightNumber: "ET-DEL-004",
+            airline: "Ethiopian Airlines",
+            departureCity: "Addis Ababa",
+            arrivalCity: "Hawassa",
+            departureTime: new Date(Date.now() + 86400000).toISOString(),
+            arrivalTime: new Date(Date.now() + 90000000).toISOString(),
+            price: 2200,
+            totalSeats: 40,
+            availableSeats: 40,
+        }, adminToken);
+        safeFlightMultiBookingId = createRes.data.flight._id;
+
+        // Booking 1 by user1
+        const book1 = await apiRequest("/api/bookings", "POST", {
+            flightId: safeFlightMultiBookingId,
+            numberOfSeats: 1,
+        }, user1Token);
+        assert(book1.status === 201, `User 1 booking failed: ${book1.status}`);
+
+        // Booking 2 by user2
+        const book2 = await apiRequest("/api/bookings", "POST", {
+            flightId: safeFlightMultiBookingId,
+            numberOfSeats: 2,
+        }, user2Token);
+        assert(book2.status === 201, `User 2 booking failed: ${book2.status}`);
+
+        // Admin attempts deletion
+        const delRes = await apiRequest(`/api/flights/${safeFlightMultiBookingId}`, "DELETE", null, adminToken);
+        assert(delRes.status === 409, `Expected 409 on deleting flight with multiple bookings, got ${delRes.status}`);
+        assert(delRes.data.activeBookings === 2, `Expected activeBookings: 2, got ${delRes.data.activeBookings}`);
+        assert(delRes.data.message === "Cannot delete flight because it has active bookings.", `Unexpected message: ${delRes.data.message}`);
+
+        // Verify flight was NOT deleted
+        const getRes = await apiRequest(`/api/flights/${safeFlightMultiBookingId}`, "GET");
+        assert(getRes.status === 200, `Flight should still exist, got ${getRes.status}`);
+    });
+
+    // D. Cancel flight with confirmed bookings -> succeeds
+    await test("Safe Flight Cancellation D. Cancel flight with confirmed bookings succeeds", async () => {
+        // Create flight with seat map
+        const createRes = await apiRequest("/api/flights", "POST", {
+            flightNumber: "ET-CNC-001",
+            airline: "Ethiopian Airlines",
+            departureCity: "Addis Ababa",
+            arrivalCity: "Gondar",
+            departureTime: new Date(Date.now() + 86400000).toISOString(),
+            arrivalTime: new Date(Date.now() + 90000000).toISOString(),
+            price: 3500,
+            seats: [
+                { seatNumber: "1A", seatClass: "Business", position: "Window", price: 6000, status: "Available" },
+                { seatNumber: "1B", seatClass: "Business", position: "Middle", price: 5500, status: "Available" },
+                { seatNumber: "2A", seatClass: "Economy", position: "Window", price: 3500, status: "Available" },
+                { seatNumber: "2B", seatClass: "Economy", position: "Middle", price: 3000, status: "Available" },
+            ],
+        }, adminToken);
+        assert(createRes.status === 201, `Failed to create flight: ${createRes.status}`);
+        safeFlightToCancelId = createRes.data.flight._id;
+
+        // User 1 books seat 1A (selected seat booking)
+        const book1 = await apiRequest("/api/bookings", "POST", {
+            flightId: safeFlightToCancelId,
+            selectedSeats: ["1A"],
+        }, user1Token);
+        assert(book1.status === 201, `Failed to book 1A: ${book1.status}`);
+        confirmedBookingId1 = book1.data._id;
+
+        // User 2 books seat 2A (selected seat booking)
+        const book2 = await apiRequest("/api/bookings", "POST", {
+            flightId: safeFlightToCancelId,
+            selectedSeats: ["2A"],
+        }, user2Token);
+        assert(book2.status === 201, `Failed to book 2A: ${book2.status}`);
+        confirmedBookingId2 = book2.data._id;
+
+        // Admin cancels flight
+        const cancelRes = await apiRequest(`/api/flights/${safeFlightToCancelId}/cancel`, "PUT", null, adminToken);
+        assert(cancelRes.status === 200, `Expected 200 on cancelling flight, got ${cancelRes.status}`);
+        assert(cancelRes.data.message === "Flight cancelled successfully", `Unexpected message: ${cancelRes.data.message}`);
+        assert(cancelRes.data.flight.status === "Cancelled", `Expected flight status Cancelled, got ${cancelRes.data.flight.status}`);
+
+        // Verify via GET /api/flights/:id
+        const getFlightRes = await apiRequest(`/api/flights/${safeFlightToCancelId}`, "GET");
+        assert(getFlightRes.status === 200, `Flight should exist, got ${getFlightRes.status}`);
+        assert(getFlightRes.data.status === "Cancelled", `Flight status should be Cancelled, got ${getFlightRes.data.status}`);
+    });
+
+    // E. Confirmed bookings remain after flight cancellation
+    await test("Safe Flight Cancellation E. Confirmed bookings remain after flight cancellation", async () => {
+        const bookRes1 = await apiRequest(`/api/bookings/${confirmedBookingId1}`, "GET", null, user1Token);
+        assert(bookRes1.status === 200, `Expected 200 for booking 1, got ${bookRes1.status}`);
+        assert(bookRes1.data.bookingStatus === "Confirmed", `Expected Confirmed bookingStatus, got ${bookRes1.data.bookingStatus}`);
+
+        const bookRes2 = await apiRequest(`/api/bookings/${confirmedBookingId2}`, "GET", null, user2Token);
+        assert(bookRes2.status === 200, `Expected 200 for booking 2, got ${bookRes2.status}`);
+        assert(bookRes2.data.bookingStatus === "Confirmed", `Expected Confirmed bookingStatus, got ${bookRes2.data.bookingStatus}`);
+    });
+
+    // F. Seat configuration remains after flight cancellation
+    await test("Safe Flight Cancellation F. Seat configuration remains after flight cancellation", async () => {
+        const seatsRes = await apiRequest(`/api/flights/${safeFlightToCancelId}/seats`, "GET");
+        assert(seatsRes.status === 200, `Expected 200 for seats, got ${seatsRes.status}`);
+        assert(Array.isArray(seatsRes.data.seats), "Seats should be an array");
+        assert(seatsRes.data.seats.length === 4, `Expected 4 seats preserved, got ${seatsRes.data.seats.length}`);
+
+        const seat1A = seatsRes.data.seats.find((s) => s.seatNumber === "1A");
+        assert(seat1A, "Seat 1A should exist");
+        assert(seat1A.price === 6000, `Seat 1A price should be 6000, got ${seat1A.price}`);
+        assert(seat1A.seatClass === "Business", `Seat 1A class should be Business, got ${seat1A.seatClass}`);
+        assert(seat1A.status === "Booked", `Seat 1A status should remain Booked, got ${seat1A.status}`);
+
+        const seat1B = seatsRes.data.seats.find((s) => s.seatNumber === "1B");
+        assert(seat1B, "Seat 1B should exist");
+        assert(seat1B.price === 5500, `Seat 1B price should be 5500, got ${seat1B.price}`);
+        assert(seat1B.status === "Available", `Seat 1B status should remain Available, got ${seat1B.status}`);
+    });
+
+    // G. New legacy booking attempt on cancelled flight -> HTTP 400
+    await test("Safe Flight Cancellation G. New legacy booking attempt on cancelled flight returns HTTP 400", async () => {
+        const createRes = await apiRequest("/api/flights", "POST", {
+            flightNumber: "ET-CNC-002",
+            airline: "Ethiopian Airlines",
+            departureCity: "Addis Ababa",
+            arrivalCity: "Jigjiga",
+            departureTime: new Date(Date.now() + 86400000).toISOString(),
+            arrivalTime: new Date(Date.now() + 90000000).toISOString(),
+            price: 2700,
+            totalSeats: 25,
+            availableSeats: 25,
+        }, adminToken);
+        const legacyCancelId = createRes.data.flight._id;
+
+        await apiRequest(`/api/flights/${legacyCancelId}/cancel`, "PUT", null, adminToken);
+
+        const attemptRes = await apiRequest("/api/bookings", "POST", {
+            flightId: legacyCancelId,
+            numberOfSeats: 1,
+        }, user1Token);
+
+        assert(attemptRes.status === 400, `Expected 400 when booking legacy seats on cancelled flight, got ${attemptRes.status}`);
+        assert(attemptRes.data.message === "Cannot book a cancelled flight.", `Expected exact message, got: ${attemptRes.data.message}`);
+    });
+
+    // H. New selected-seat booking attempt on cancelled flight -> HTTP 400
+    await test("Safe Flight Cancellation H. New selected-seat booking attempt on cancelled flight returns HTTP 400", async () => {
+        const attemptRes = await apiRequest("/api/bookings", "POST", {
+            flightId: safeFlightToCancelId,
+            selectedSeats: ["1B"],
+        }, user1Token);
+
+        assert(attemptRes.status === 400, `Expected 400 when booking selected seat on cancelled flight, got ${attemptRes.status}`);
+        assert(attemptRes.data.message === "Cannot book a cancelled flight.", `Expected exact message, got: ${attemptRes.data.message}`);
+    });
+
+    // I. Already cancelled flight cannot be cancelled again -> HTTP 400
+    await test("Safe Flight Cancellation I. Already cancelled flight cannot be cancelled again returns HTTP 400", async () => {
+        const doubleCancelRes = await apiRequest(`/api/flights/${safeFlightToCancelId}/cancel`, "PUT", null, adminToken);
+        assert(doubleCancelRes.status === 400, `Expected 400 when re-cancelling flight, got ${doubleCancelRes.status}`);
+        assert(doubleCancelRes.data.message === "Flight is already cancelled", `Unexpected message: ${doubleCancelRes.data.message}`);
+    });
+
+    // J. Non-admin user cannot cancel a flight -> HTTP 403
+    await test("Safe Flight Cancellation J. Non-admin user cannot cancel a flight returns HTTP 403", async () => {
+        const createRes = await apiRequest("/api/flights", "POST", {
+            flightNumber: "ET-CNC-003",
+            airline: "Ethiopian Airlines",
+            departureCity: "Addis Ababa",
+            arrivalCity: "Arba Minch",
+            departureTime: new Date(Date.now() + 86400000).toISOString(),
+            arrivalTime: new Date(Date.now() + 90000000).toISOString(),
+            price: 2900,
+            totalSeats: 30,
+            availableSeats: 30,
+        }, adminToken);
+        const testFlightId = createRes.data.flight._id;
+
+        // Non-admin attempt
+        const nonAdminRes = await apiRequest(`/api/flights/${testFlightId}/cancel`, "PUT", null, user1Token);
+        assert(nonAdminRes.status === 403, `Expected 403 for non-admin cancel attempt, got ${nonAdminRes.status}`);
+
+        // Unauthenticated attempt
+        const noAuthRes = await apiRequest(`/api/flights/${testFlightId}/cancel`, "PUT", null, null);
+        assert(noAuthRes.status === 401, `Expected 401 for unauthenticated cancel attempt, got ${noAuthRes.status}`);
+    });
+
+    // Extra: Delete non-existent flight returns 404
+    await test("Safe Flight Deletion Extra. Delete non-existent flight returns 404", async () => {
+        const fakeId = new mongoose.Types.ObjectId();
+        const delRes = await apiRequest(`/api/flights/${fakeId}`, "DELETE", null, adminToken);
+        assert(delRes.status === 404, `Expected 404 for non-existent flight deletion, got ${delRes.status}`);
+    });
+
+    // Extra: Cancel non-existent flight returns 404
+    await test("Safe Flight Cancellation Extra. Cancel non-existent flight returns 404", async () => {
+        const fakeId = new mongoose.Types.ObjectId();
+        const cancelRes = await apiRequest(`/api/flights/${fakeId}/cancel`, "PUT", null, adminToken);
+        assert(cancelRes.status === 404, `Expected 404 for non-existent flight cancellation, got ${cancelRes.status}`);
+    });
 }
 
 async function main() {

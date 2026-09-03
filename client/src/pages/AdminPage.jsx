@@ -50,6 +50,10 @@ export function AdminPage() {
   const [deletingFlight, setDeletingFlight] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
+  // Cancel Flight Modal state
+  const [cancellingFlight, setCancellingFlight] = useState(null);
+  const [cancelFlightLoading, setCancelFlightLoading] = useState(false);
+
   // Cancel Customer Booking Modal state
   const [cancellingBooking, setCancellingBooking] = useState(null);
   const [cancelLoading, setCancelLoading] = useState(false);
@@ -228,13 +232,61 @@ export function AdminPage() {
       // Refresh stats quietly
       loadAdminData(true);
     } catch (err) {
+      if (err.status === 409) {
+        setError(
+          'This flight cannot be deleted because it has active bookings. Cancel the flight instead.'
+        );
+      } else {
+        const msg =
+          err.data?.message ||
+          err.message ||
+          'Failed to delete flight.';
+        setError(msg);
+      }
+      setDeletingFlight(null);
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
+  // Handle Cancel Flight Confirm
+  const handleConfirmCancelFlight = async () => {
+    if (!cancellingFlight) return;
+
+    setCancelFlightLoading(true);
+    try {
+      const flightId = cancellingFlight._id || cancellingFlight.id;
+      const res = await flightService.cancelFlight(flightId);
+      const updatedFlight = res.flight || res;
+
+      setFlights((prev) =>
+        prev.map((f) => {
+          const currentId = f._id || f.id;
+          if (currentId === flightId) {
+            return {
+              ...f,
+              ...updatedFlight,
+              status: 'Cancelled',
+            };
+          }
+          return f;
+        })
+      );
+      setSuccessMessage(
+        res.message || `Flight ${cancellingFlight.flightNumber} cancelled successfully.`
+      );
+      setCancellingFlight(null);
+      // Refresh stats quietly
+      loadAdminData(true);
+    } catch (err) {
       const msg =
         err.data?.message ||
         err.message ||
-        'Failed to delete flight.';
+        'Failed to cancel flight.';
       setError(msg);
+      setCancellingFlight(null);
     } finally {
-      setDeleteLoading(false);
+      setCancelFlightLoading(false);
     }
   };
 
@@ -399,6 +451,7 @@ export function AdminPage() {
                 onAddNewFlight={handleOpenCreateFlight}
                 onEditFlight={handleOpenEditFlight}
                 onDeleteFlight={(flight) => setDeletingFlight(flight)}
+                onCancelFlight={(flight) => setCancellingFlight(flight)}
                 onManageSeats={handleOpenManageSeats}
               />
             </div>
@@ -437,6 +490,7 @@ export function AdminPage() {
             onAddNewFlight={handleOpenCreateFlight}
             onEditFlight={handleOpenEditFlight}
             onDeleteFlight={(flight) => setDeletingFlight(flight)}
+            onCancelFlight={(flight) => setCancellingFlight(flight)}
             onManageSeats={handleOpenManageSeats}
           />
         </div>
@@ -483,6 +537,19 @@ export function AdminPage() {
         onConfirm={handleConfirmDeleteFlight}
         onCancel={() => setDeletingFlight(null)}
         loading={deleteLoading}
+        isDestructive={true}
+      />
+
+      {/* Cancel Flight Confirmation Modal */}
+      <ConfirmModal
+        isOpen={Boolean(cancellingFlight)}
+        title="Cancel Flight Schedule?"
+        message={`Are you sure you want to cancel flight ${cancellingFlight?.flightNumber} (${cancellingFlight?.departureCity} → ${cancellingFlight?.arrivalCity})? New bookings will be blocked, while existing reservations and seat maps will be preserved.`}
+        confirmText="Cancel Flight"
+        cancelText="Keep Active"
+        onConfirm={handleConfirmCancelFlight}
+        onCancel={() => setCancellingFlight(null)}
+        loading={cancelFlightLoading}
         isDestructive={true}
       />
 

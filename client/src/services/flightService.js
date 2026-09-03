@@ -48,6 +48,15 @@ export const flightService = {
   },
 
   /**
+   * Cancel a flight (Admin only)
+   * @param {string} id - Flight ID
+   * @returns {Promise<{ message: string, flight: Object }>}
+   */
+  async cancelFlight(id) {
+    return api.put(`/api/flights/${id}/cancel`);
+  },
+
+  /**
    * Get flight seat map and configured seats
    * @param {string} id - Flight ID
    * @returns {Promise<{ flightId: string, flightNumber: string, totalSeats: number, availableSeats: number, seats: Array }>}

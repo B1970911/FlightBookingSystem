@@ -3342,6 +3342,12 @@
   background-color: var(--error-bg);
 }
 
+.btn-icon-action.cancel:hover {
+  color: var(--error-color);
+  border-color: var(--error-border);
+  background-color: var(--error-bg);
+}
+
 /* User & Booking Cells */
 .booking-ref-tag {
   font-size: 12px;

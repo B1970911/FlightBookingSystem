@@ -541,18 +541,7 @@ const deleteFlight = async (req, res) => {
             });
         }
 
-        const activeBookings = await Booking.find({
-            flight: req.params.id,
-            bookingStatus: "Confirmed",
-        });
-
-        if (activeBookings.length > 0) {
-            return res.status(400).json({
-                message: "Cannot delete flight with active confirmed bookings",
-            });
-        }
-
-        const flight = await Flight.findByIdAndDelete(req.params.id);
+        const flight = await Flight.findById(req.params.id);
 
         if (!flight) {
             return res.status(404).json({
@@ -560,8 +549,58 @@ const deleteFlight = async (req, res) => {
             });
         }
 
+        const activeBookings = await Booking.countDocuments({
+            flight: req.params.id,
+            bookingStatus: "Confirmed",
+        });
+
+        if (activeBookings > 0) {
+            return res.status(409).json({
+                message: "Cannot delete flight because it has active bookings.",
+                activeBookings,
+            });
+        }
+
+        await Flight.findByIdAndDelete(req.params.id);
+
         res.status(200).json({
             message: "Flight deleted successfully",
+        });
+    } catch (error) {
+        res.status(500).json({
+            message: error.message,
+        });
+    }
+};
+
+const cancelFlight = async (req, res) => {
+    try {
+        if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+            return res.status(400).json({
+                message: "Invalid flight ID",
+            });
+        }
+
+        const flight = await Flight.findById(req.params.id);
+
+        if (!flight) {
+            return res.status(404).json({
+                message: "Flight not found",
+            });
+        }
+
+        if (flight.status === "Cancelled") {
+            return res.status(400).json({
+                message: "Flight is already cancelled",
+            });
+        }
+
+        flight.status = "Cancelled";
+        await flight.save();
+
+        res.status(200).json({
+            message: "Flight cancelled successfully",
+            flight,
         });
     } catch (error) {
         res.status(500).json({
@@ -579,4 +618,5 @@ module.exports = {
     generateFlightSeats,
     updateFlight,
     deleteFlight,
+    cancelFlight,
 };

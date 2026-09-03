@@ -11,6 +11,7 @@ import {
   Calendar,
   ArrowRight,
   Armchair,
+  Ban,
 } from 'lucide-react';
 
 export function AdminFlightsTable({
@@ -19,6 +20,7 @@ export function AdminFlightsTable({
   onAddNewFlight,
   onEditFlight,
   onDeleteFlight,
+  onCancelFlight,
   onManageSeats,
 }) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -258,6 +260,18 @@ export function AdminFlightsTable({
                         >
                           <Pencil size={15} />
                         </button>
+
+                        {flight.status !== 'Cancelled' && (
+                          <button
+                            type="button"
+                            className="btn-icon-action cancel"
+                            onClick={() => onCancelFlight && onCancelFlight(flight)}
+                            title="Cancel Flight"
+                            aria-label={`Cancel flight ${flight.flightNumber}`}
+                          >
+                            <Ban size={15} />
+                          </button>
+                        )}
 
                         <button
                           type="button"

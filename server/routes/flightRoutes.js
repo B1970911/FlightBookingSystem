@@ -11,6 +11,7 @@ const {
     generateFlightSeats,
     updateFlight,
     deleteFlight,
+    cancelFlight,
 } = require("../controllers/flightController");
 
 const { protect, admin } = require("../middleware/authMiddleware");
@@ -23,6 +24,8 @@ router.get("/:id/seats", getFlightSeats);
 router.post("/:id/seats", protect, admin, configureFlightSeats);
 router.put("/:id/seats", protect, admin, configureFlightSeats);
 router.post("/:id/generate-seats", protect, admin, generateFlightSeats);
+
+router.put("/:id/cancel", protect, admin, cancelFlight);
 
 router.get("/:id", getFlightById);
 
