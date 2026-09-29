@@ -102,29 +102,47 @@ const confirmPayment = async (req, res) => {
         try {
             await sendEmail(
                 payment.user.email,
-                "Payment Confirmation - SkyLink Ethiopia",
-                `
-                    <html>
-                        <body>
-                            <h2>SkyLink Ethiopia - Payment Confirmation</h2>
+                "Your SkyLink Ethiopia Booking is Confirmed",
+        `
+            <html>
+                <body>
+                    <h2>SkyLink Ethiopia</h2>
 
-                            <p>Hello ${payment.user.name},</p>
+                    <p>Hello ${payment.user.name},</p>
 
-                            <p>Your payment has been successfully confirmed.</p>
+                    <p>
+                        Thank you for booking with SkyLink Ethiopia.
+                        Your payment has been received and your booking is confirmed.
+                    </p>
 
-                            <p>Payment amount: ETB ${payment.amount.toFixed(2)}</p>
+                    <p><strong>Payment Details</strong></p>
 
-                            <p>Payment status: ${payment.paymentStatus}</p>
+                    <p>Amount paid: ETB ${payment.amount.toFixed(2)}</p>
 
-                            <p>Payment date: ${payment.paymentDate.toLocaleString()}</p>
+                    <p>Status: Confirmed</p>
 
-                            <p>Thank you for choosing SkyLink Ethiopia.</p>
+                    <p>Payment date: ${payment.paymentDate.toLocaleString()}</p>
 
-                            <p>We appreciate your booking and wish you a pleasant journey.</p>
-                        </body>
-                    </html>
-                `
-            );
+                    <p>
+                        Please keep this email for your records.
+                    </p>
+
+                    <p>
+                        We look forward to having you travel with us.
+                    </p>
+
+                    <p>
+                        Have a safe and pleasant journey!
+                    </p>
+
+                    <p>
+                        Regards,<br>
+                        SkyLink Ethiopia
+                    </p>
+                </body>
+            </html>
+        `
+    );
             emailSent = true;
         } catch (emailError) {
             console.error("⚠️ Email delivery notice:", emailError.message);
