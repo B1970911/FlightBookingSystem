@@ -102,43 +102,22 @@ const confirmPayment = async (req, res) => {
         try {
             await sendEmail(
                 payment.user.email,
-                "Your SkyLink Ethiopia Booking is Confirmed",
+                "Your booking is confirmed | SkyLink Ethiopia",
         `
             <html>
-                <body>
-                    <h2>SkyLink Ethiopia</h2>
-
+                <body style="font-family: Arial, sans-serif; color: #222; line-height: 1.5;">
                     <p>Hello ${payment.user.name},</p>
 
-                    <p>
-                        Thank you for booking with SkyLink Ethiopia.
-                        Your payment has been received and your booking is confirmed.
-                    </p>
+                    <p>Your booking is confirmed, and we’ve received your payment. Thank you for choosing SkyLink Ethiopia.</p>
 
-                    <p><strong>Payment Details</strong></p>
+                    <p><strong>Payment summary</strong></p>
+                    <p>Amount paid: ETB ${payment.amount.toFixed(2)}<br>
+                    Status: Paid<br>
+                    Date: ${payment.paymentDate.toLocaleString()}</p>
 
-                    <p>Amount paid: ETB ${payment.amount.toFixed(2)}</p>
+                    <p>Please keep this email for your records. If you have a question about your booking, reply to this email and we’ll be happy to help.</p>
 
-                    <p>Status: Confirmed</p>
-
-                    <p>Payment date: ${payment.paymentDate.toLocaleString()}</p>
-
-                    <p>
-                        Please keep this email for your records.
-                    </p>
-
-                    <p>
-                        We look forward to having you travel with us.
-                    </p>
-
-                    <p>
-                        Have a safe and pleasant journey!
-                    </p>
-
-                    <p>
-                        Regards,<br>
-                        SkyLink Ethiopia
-                    </p>
+                    <p>Warm regards,<br>SkyLink Ethiopia</p>
                 </body>
             </html>
         `
