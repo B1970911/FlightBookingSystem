@@ -103,24 +103,17 @@ const confirmPayment = async (req, res) => {
             await sendEmail(
                 payment.user.email,
                 "Your booking is confirmed | SkyLink Ethiopia",
-        `
-            <html>
-                <body style="font-family: Arial, sans-serif; color: #222; line-height: 1.5;">
-                    <p>Hello ${payment.user.name},</p>
+                null,
+                `Hello ${payment.user.name},
 
-                    <p>Your booking is confirmed, and we’ve received your payment. Thank you for choosing SkyLink Ethiopia.</p>
+Your booking is confirmed, and your payment has been received.
 
-                    <p><strong>Payment summary</strong></p>
-                    <p>Amount paid: ETB ${payment.amount.toFixed(2)}<br>
-                    Status: Paid<br>
-                    Date: ${payment.paymentDate.toLocaleString()}</p>
+Amount paid: ETB ${payment.amount.toFixed(2)}
 
-                    <p>Please keep this email for your records. If you have a question about your booking, reply to this email and we’ll be happy to help.</p>
+Thank you for booking with SkyLink Ethiopia. Please reply to this email if you have a question.
 
-                    <p>Warm regards,<br>SkyLink Ethiopia</p>
-                </body>
-            </html>
-        `
+Warm regards,
+SkyLink Ethiopia`
     );
             emailSent = true;
         } catch (emailError) {
