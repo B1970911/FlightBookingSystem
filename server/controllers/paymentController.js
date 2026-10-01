@@ -97,24 +97,72 @@ const confirmPayment = async (req, res) => {
 
         await payment.save();
 
+        // Format payment date to match e.g. "8/20/2026, 12:57:24 PM"
+        const formattedDate = payment.paymentDate.toLocaleString("en-US", {
+            month: "numeric",
+            day: "numeric",
+            year: "numeric",
+            hour: "numeric",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: true,
+        });
+
+        const subject = "SkyLink Ethiopia - Payment Confirmation";
+
+        const textBody = `Hello ${payment.user.name},
+Your payment has been successfully confirmed.
+Payment amount: ETB ${payment.amount.toFixed(2)}
+Payment status: ${payment.paymentStatus}
+Payment date: ${formattedDate}
+Thank you for choosing SkyLink Ethiopia.
+We appreciate your booking and wish you a pleasant journey.`;
+
+        const htmlBody = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; background-color: #ffffff;">
+                <div style="background-color: #1e3a8a; padding: 22px; text-align: center; color: #ffffff;">
+                    <h1 style="margin: 0; font-size: 22px; font-weight: bold;">SkyLink Ethiopia</h1>
+                    <p style="margin: 4px 0 0; font-size: 14px; opacity: 0.9;">Payment Confirmation</p>
+                </div>
+                <div style="padding: 26px; color: #1e293b; font-size: 15px; line-height: 1.6;">
+                    <p style="margin-top: 0;">Hello <strong>${payment.user.name}</strong>,</p>
+                    <p style="margin: 0 0 16px 0; color: #0f766e; font-weight: 600;">Your payment has been successfully confirmed.</p>
+                    
+                    <div style="background-color: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; margin: 18px 0;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 14px;">
+                            <tr>
+                                <td style="padding: 6px 0; color: #64748b; width: 140px;">Payment amount:</td>
+                                <td style="padding: 6px 0; font-weight: bold; color: #1e3a8a;">ETB ${payment.amount.toFixed(2)}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 6px 0; color: #64748b;">Payment status:</td>
+                                <td style="padding: 6px 0; font-weight: bold; color: #16a34a;">${payment.paymentStatus}</td>
+                            </tr>
+                            <tr>
+                                <td style="padding: 6px 0; color: #64748b;">Payment date:</td>
+                                <td style="padding: 6px 0; color: #334155;">${formattedDate}</td>
+                            </tr>
+                        </table>
+                    </div>
+
+                    <p style="margin: 16px 0 6px 0;">Thank you for choosing SkyLink Ethiopia.</p>
+                    <p style="margin: 0;">We appreciate your booking and wish you a pleasant journey.</p>
+                </div>
+                <div style="background-color: #f1f5f9; padding: 12px; text-align: center; color: #64748b; font-size: 12px; border-top: 1px solid #e2e8f0;">
+                    SkyLink Ethiopia | Safe & Reliable Travels
+                </div>
+            </div>
+        `;
+
         // Send confirmation email
         let emailSent = false;
         try {
-            await sendEmail(
-                payment.user.email,
-                "Your booking is confirmed | SkyLink Ethiopia",
-                null,
-                `Hello ${payment.user.name},
-
-Your booking is confirmed, and your payment has been received.
-
-Amount paid: ETB ${payment.amount.toFixed(2)}
-
-Thank you for booking with SkyLink Ethiopia. Please reply to this email if you have a question.
-
-Warm regards,
-SkyLink Ethiopia`
-    );
+            await sendEmail({
+                to: payment.user.email,
+                subject,
+                text: textBody,
+                html: htmlBody,
+            });
             emailSent = true;
         } catch (emailError) {
             console.error("⚠️ Email delivery notice:", emailError.message);

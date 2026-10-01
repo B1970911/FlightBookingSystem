@@ -318,7 +318,18 @@ const sendEmail = async (firstArg, secondArg, thirdArg, fourthArg) => {
         return await sendResendEmail({ to, subject, text, html });
     }
 
-    return await sendGmailEmail({ to, subject, text, html });
+    try {
+        return await sendGmailEmail({ to, subject, text, html });
+    } catch (gmailError) {
+        if (process.env.RESEND_API_KEY) {
+            console.warn(
+                "⚠️ Gmail SMTP dispatch failed (possibly due to cloud host port restrictions). Falling back to Resend API...",
+                gmailError.message
+            );
+            return await sendResendEmail({ to, subject, text, html });
+        }
+        throw gmailError;
+    }
 };
 
 // Attach helper functions to main exported function for flexibility
