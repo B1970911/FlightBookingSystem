@@ -900,16 +900,28 @@ export function BookingCreatePage() {
               Your flight reservation is fully confirmed and your e-ticket has been issued.
             </p>
 
-            <div className="email-sent-banner">
-              <Mail size={20} className="mail-icon" />
-              <div>
-                <strong>Confirmation Email Sent via Resend</strong>
-                <p>
-                  A confirmation receipt and booking summary have been dispatched to{' '}
-                  <strong>{user?.email}</strong>.
-                </p>
+            {confirmedPaymentData?.emailSent !== false ? (
+              <div className="email-sent-banner">
+                <Mail size={20} className="mail-icon" />
+                <div>
+                  <strong>Confirmation Email Sent via Gmail SMTP</strong>
+                  <p>
+                    A confirmation receipt and booking summary have been dispatched to{' '}
+                    <strong>{user?.email}</strong>.
+                  </p>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="email-sent-banner warning" style={{ background: '#fffbeb', borderColor: '#fef3c7', color: '#92400e' }}>
+                <Mail size={20} className="mail-icon" style={{ color: '#d97706' }} />
+                <div>
+                  <strong>Payment Confirmed (Email Notification Notice)</strong>
+                  <p>
+                    Your reservation has been confirmed. Note: Confirmation email delivery was delayed or unavailable.
+                  </p>
+                </div>
+              </div>
+            )}
 
             <div className="confirmation-details-table">
               <div className="detail-item">

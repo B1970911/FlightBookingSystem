@@ -156,15 +156,19 @@ We appreciate your booking and wish you a pleasant journey.`;
 
         // Send confirmation email
         let emailSent = false;
+        let emailProvider = null;
+        let emailErrorNotice = null;
         try {
-            await sendEmail({
+            const sendResult = await sendEmail({
                 to: payment.user.email,
                 subject,
                 text: textBody,
                 html: htmlBody,
             });
             emailSent = true;
+            emailProvider = sendResult?.provider || "gmail";
         } catch (emailError) {
+            emailErrorNotice = emailError.message;
             console.error("⚠️ Email delivery notice:", emailError.message);
         }
 
@@ -172,6 +176,9 @@ We appreciate your booking and wish you a pleasant journey.`;
             message: emailSent
                 ? "Payment confirmed successfully. Confirmation email sent."
                 : "Payment confirmed successfully.",
+            emailSent,
+            emailProvider,
+            emailError: emailErrorNotice,
             payment,
         });
     } catch (error) {

@@ -4,13 +4,16 @@ const { Resend } = require("resend");
 // Regular expression for validating recipient email address format
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// Cache active transporters by host:port:user for connection pooling
+const transporterCache = new Map();
+
 /**
  * Validates and retrieves Gmail SMTP configuration from environment variables.
  * @returns {{ host: string, port: number, user: string, pass: string }}
  */
 const getGmailConfig = () => {
     const host = process.env.EMAIL_HOST || "smtp.gmail.com";
-    const port = parseInt(process.env.EMAIL_PORT, 10) || 587;
+    const port = parseInt(process.env.EMAIL_PORT, 10) || 465;
     const user = process.env.EMAIL_USER;
     const rawPass = process.env.EMAIL_PASSWORD || process.env.EMAIL_PASS;
     const pass = rawPass ? rawPass.replace(/\s+/g, "") : "";
@@ -30,49 +33,85 @@ const getGmailConfig = () => {
 };
 
 /**
- * Creates and returns a Nodemailer transporter configured for Gmail SMTP.
- * Enforces TLS / STARTTLS on port 587.
+ * Creates or retrieves a pooled Nodemailer transporter configured for Gmail SMTP.
+ * Enforces SSL on port 465 or STARTTLS on port 587, with connection pooling
+ * to prevent connection drops, socket exhaustion, or Google anti-abuse rate limits.
+ *
+ * @param {Object} [options]
+ * @param {number} [options.portOverride] - Optional port override (e.g. 465 or 587)
+ * @param {boolean} [options.forceNew] - Whether to recreate the transporter instance
  * @returns {nodemailer.Transporter}
  */
-const createGmailTransporter = () => {
-    const { host, port, user, pass } = getGmailConfig();
+const getGmailTransporter = ({ portOverride = null, forceNew = false } = {}) => {
+    const { host, port: configPort, user, pass } = getGmailConfig();
+    const port = portOverride || configPort;
     const isSecurePort = port === 465;
+    const cacheKey = `${host}:${port}:${user}`;
 
-    return nodemailer.createTransport({
+    if (!forceNew && transporterCache.has(cacheKey)) {
+        return transporterCache.get(cacheKey);
+    }
+
+    const transportConfig = {
+        pool: true, // Reuse open SMTP connections for subsequent emails
+        maxConnections: 3,
+        maxMessages: 100,
+        rateDelta: 1000,
+        rateLimit: 5,
         host,
         port,
-        secure: isSecurePort, // true for port 465, false for port 587 (uses STARTTLS)
-        requireTLS: !isSecurePort, // enforce TLS upgrade when port is 587
+        secure: isSecurePort, // true for port 465 (SSL), false for port 587 (STARTTLS)
         auth: {
             user,
             pass,
         },
-        connectionTimeout: 15000,
+        connectionTimeout: 12000,
         greetingTimeout: 10000,
-        socketTimeout: 20000,
+        socketTimeout: 15000,
         tls: {
             rejectUnauthorized: true,
+            minVersion: "TLSv1.2",
         },
-    });
+    };
+
+    // When connecting to smtp.gmail.com on port 465, service: 'gmail' provides optimal defaults
+    if (host === "smtp.gmail.com" && isSecurePort) {
+        transportConfig.service = "gmail";
+    }
+
+    const transporter = nodemailer.createTransport(transportConfig);
+    transporterCache.set(cacheKey, transporter);
+    return transporter;
 };
+
+// Alias for backward compatibility
+const createGmailTransporter = (options) => getGmailTransporter(options);
 
 /**
  * Formats Gmail/SMTP errors into clear, actionable messages.
+ * Detects common cloud host port blocks (e.g. Render, AWS free tier),
+ * Google App Password authentication failures, and recipient rejections.
+ *
  * @param {Error} error
  * @param {string} host
  * @param {number} port
  * @returns {Error}
  */
-const formatSmtpError = (error, host = "smtp.gmail.com", port = 587) => {
+const formatSmtpError = (error, host = "smtp.gmail.com", port = 465) => {
     const code = error.code || "";
     const response = error.response || "";
     const message = error.message || "";
 
-    if (code === "EAUTH" || response.includes("535") || message.includes("535") || message.includes("Username and Password not accepted")) {
+    if (
+        code === "EAUTH" ||
+        response.includes("535") ||
+        message.includes("535") ||
+        message.includes("Username and Password not accepted")
+    ) {
         const authError = new Error(
             "Gmail SMTP Authentication Failed (535): Invalid username or 16-character App Password. " +
-            "Ensure 2-Step Verification is active on your Google account and you have generated a valid App Password " +
-            "at https://myaccount.google.com/apppasswords (no regular Google account passwords)."
+            "Ensure 2-Step Verification is enabled on your Google account and you have generated a valid App Password " +
+            "at https://myaccount.google.com/apppasswords (do not use your regular Google account password)."
         );
         authError.code = "EAUTH";
         authError.originalError = error;
@@ -95,8 +134,10 @@ const formatSmtpError = (error, host = "smtp.gmail.com", port = 587) => {
         message.includes("self signed certificate")
     ) {
         const connError = new Error(
-            `Gmail SMTP Connection/TLS Failure: Unable to connect to ${host}:${port} (${code || message}). ` +
-            "Please check network connectivity, firewall settings, or verify that outbound port 587 is not blocked."
+            `Gmail SMTP Connection Failure: Unable to connect to ${host}:${port} (${code || message}). ` +
+            "NOTE: Free cloud hosting tiers (such as Render Free Tier) completely block outbound SMTP ports (25, 465, 587). " +
+            "If deployed on Render, upgrade to a paid instance or use an HTTPS API email service. " +
+            "If running locally, check your local firewall/antivirus or try switching EMAIL_PORT between 465 and 587."
         );
         connError.code = code || "CONNECTION_FAILED";
         connError.originalError = error;
@@ -135,44 +176,21 @@ const validateRecipient = (to) => {
 };
 
 /**
- * Verifies Gmail SMTP connection and authentication credentials.
- * @returns {Promise<{ success: boolean, message: string, host: string, port: number, user: string }>}
- */
-const verifyGmailConnection = async () => {
-    const config = getGmailConfig();
-    const transporter = createGmailTransporter();
-
-    try {
-        await transporter.verify();
-        return {
-            success: true,
-            message: "Gmail SMTP connection and credentials verified successfully.",
-            host: config.host,
-            port: config.port,
-            user: config.user,
-        };
-    } catch (error) {
-        const formatted = formatSmtpError(error, config.host, config.port);
-        console.error("❌ Gmail SMTP Verification Failed:", formatted.message);
-        throw formatted;
-    }
-};
-
-/**
  * Sends an email using Gmail SMTP and Google 16-character App Password.
+ * Automatically tries primary port (e.g. 465 SSL or 587 STARTTLS) and fails over
+ * to the alternate port if a connection or socket timeout occurs.
+ *
  * @param {Object} options
  * @param {string} options.to - Recipient email
  * @param {string} options.subject - Email subject
  * @param {string} [options.text] - Plain text body
  * @param {string} [options.html] - Optional HTML body
- * @returns {Promise<{ success: boolean, provider: string, messageId: string, response: string, recipient: string }>}
+ * @returns {Promise<{ success: boolean, provider: string, messageId: string, response: string, recipient: string, port: number }>}
  */
 const sendGmailEmail = async ({ to, subject, text, html }) => {
     validateRecipient(to);
 
     const config = getGmailConfig();
-    const transporter = createGmailTransporter();
-
     const fromAddress = process.env.EMAIL_FROM || `SkyLink Ethiopia <${config.user}>`;
 
     const mailOptions = {
@@ -192,25 +210,96 @@ const sendGmailEmail = async ({ to, subject, text, html }) => {
             .trim();
     }
 
+    const primaryPort = config.port;
+    const alternatePort = primaryPort === 465 ? 587 : 465;
+
+    // Attempt 1: Primary port (with connection pooling)
     try {
+        const transporter = getGmailTransporter({ portOverride: primaryPort });
         const info = await transporter.sendMail(mailOptions);
-        console.log(`✅ [Gmail SMTP] Email sent successfully to ${to}. Message ID: ${info.messageId}`);
+        console.log(`✅ [Gmail SMTP] Email sent successfully to ${to} via port ${primaryPort}. Message ID: ${info.messageId}`);
         return {
             success: true,
             provider: "gmail",
             messageId: info.messageId,
             response: info.response,
             recipient: to,
+            port: primaryPort,
         };
-    } catch (error) {
-        const formatted = formatSmtpError(error, config.host, config.port);
-        console.error("❌ [Gmail SMTP] Send Error:", formatted.message);
-        throw formatted;
+    } catch (primaryError) {
+        console.warn(
+            `⚠️ [Gmail SMTP] Send attempt via port ${primaryPort} failed: ${primaryError.message}. Retrying via alternate port ${alternatePort}...`
+        );
+
+        // Invalidate cached transporter on failure to recreate connection
+        transporterCache.delete(`${config.host}:${primaryPort}:${config.user}`);
+
+        // Attempt 2: Alternate port (465 <-> 587)
+        try {
+            const alternateTransporter = getGmailTransporter({ portOverride: alternatePort, forceNew: true });
+            const info = await alternateTransporter.sendMail(mailOptions);
+            console.log(`✅ [Gmail SMTP] Email sent successfully to ${to} via alternate port ${alternatePort}. Message ID: ${info.messageId}`);
+            return {
+                success: true,
+                provider: "gmail",
+                messageId: info.messageId,
+                response: info.response,
+                recipient: to,
+                port: alternatePort,
+            };
+        } catch (alternateError) {
+            transporterCache.delete(`${config.host}:${alternatePort}:${config.user}`);
+            const formatted = formatSmtpError(primaryError, config.host, primaryPort);
+            console.error("❌ [Gmail SMTP] Send Error on both ports (465 and 587):", formatted.message);
+            throw formatted;
+        }
+    }
+};
+
+/**
+ * Verifies Gmail SMTP connection and authentication credentials.
+ * Tests both primary and alternate ports.
+ *
+ * @returns {Promise<{ success: boolean, message: string, host: string, port: number, user: string }>}
+ */
+const verifyGmailConnection = async () => {
+    const config = getGmailConfig();
+    const primaryPort = config.port;
+    const alternatePort = primaryPort === 465 ? 587 : 465;
+
+    try {
+        const transporter = getGmailTransporter({ portOverride: primaryPort, forceNew: true });
+        await transporter.verify();
+        return {
+            success: true,
+            message: `Gmail SMTP verified successfully on port ${primaryPort}.`,
+            host: config.host,
+            port: primaryPort,
+            user: config.user,
+        };
+    } catch (primaryErr) {
+        console.warn(`⚠️ Port ${primaryPort} verification failed: ${primaryErr.message}. Trying port ${alternatePort}...`);
+        try {
+            const altTransporter = getGmailTransporter({ portOverride: alternatePort, forceNew: true });
+            await altTransporter.verify();
+            return {
+                success: true,
+                message: `Gmail SMTP verified successfully on alternate port ${alternatePort}.`,
+                host: config.host,
+                port: alternatePort,
+                user: config.user,
+            };
+        } catch (altErr) {
+            const formatted = formatSmtpError(primaryErr, config.host, primaryPort);
+            console.error("❌ Gmail SMTP Verification Failed on both ports:", formatted.message);
+            throw formatted;
+        }
     }
 };
 
 /**
  * Sends an email using Resend API (preserves existing Resend implementation).
+ *
  * @param {Object} options
  * @param {string} options.to - Recipient email
  * @param {string} options.subject - Email subject
@@ -229,8 +318,10 @@ const sendResendEmail = async ({ to, subject, text, html }) => {
 
     try {
         const resend = new Resend(process.env.RESEND_API_KEY);
+        const fromAddress = process.env.RESEND_FROM || "SkyLink Ethiopia <bookings@flightbooking.de5.net>";
+
         const { data, error } = await resend.emails.send({
-            from: process.env.RESEND_FROM || "SkyLink Ethiopia <bookings@flightbooking.de5.net>",
+            from: fromAddress,
             to: [to.trim()],
             subject: subject || "SkyLink Ethiopia Notification",
             ...(html ? { html } : {}),
@@ -238,8 +329,17 @@ const sendResendEmail = async ({ to, subject, text, html }) => {
         });
 
         if (error) {
-            console.error("❌ Resend Email Error:", error);
-            throw new Error(error.message || "Resend email dispatch failed.");
+            let errorMsg = error.message || "Resend email dispatch failed.";
+            if (errorMsg.includes("testing emails to your own email address")) {
+                errorMsg = (
+                    "Resend API Limitation: Free accounts without a verified custom domain can only send " +
+                    "to the account owner's email address. To send to any recipient, verify your domain in Resend dashboard or use Gmail SMTP."
+                );
+            }
+            console.error("❌ Resend Email Error:", errorMsg);
+            const resendError = new Error(errorMsg);
+            resendError.code = error.name || "RESEND_ERROR";
+            throw resendError;
         }
 
         console.log("✅ [Resend] Email sent successfully:", data.id);
@@ -292,11 +392,9 @@ const sendEmail = async (firstArg, secondArg, thirdArg, fourthArg) => {
             html = thirdArg;
             text = fourthArg;
         } else if (fourthArg) {
-            // e.g. sendEmail(to, subject, htmlOrNull, text) as in paymentController.js
             html = thirdArg || undefined;
             text = fourthArg;
         } else {
-            // single body argument: determine if HTML or plain text
             if (typeof thirdArg === "string" && /<[a-z][\s\S]*>/i.test(thirdArg)) {
                 html = thirdArg;
             } else {
@@ -323,10 +421,19 @@ const sendEmail = async (firstArg, secondArg, thirdArg, fourthArg) => {
     } catch (gmailError) {
         if (process.env.RESEND_API_KEY) {
             console.warn(
-                "⚠️ Gmail SMTP dispatch failed (possibly due to cloud host port restrictions). Falling back to Resend API...",
+                "⚠️ Gmail SMTP dispatch failed. Attempting fallback to Resend API...",
                 gmailError.message
             );
-            return await sendResendEmail({ to, subject, text, html });
+            try {
+                return await sendResendEmail({ to, subject, text, html });
+            } catch (resendError) {
+                console.error("❌ Resend API fallback also failed:", resendError.message);
+                const combinedError = new Error(
+                    `Email delivery failed on Gmail SMTP (${gmailError.message}). Fallback to Resend also failed (${resendError.message}).`
+                );
+                combinedError.code = "ALL_PROVIDERS_FAILED";
+                throw combinedError;
+            }
         }
         throw gmailError;
     }
@@ -338,5 +445,6 @@ sendEmail.sendGmail = sendGmailEmail;
 sendEmail.sendResend = sendResendEmail;
 sendEmail.verifyGmailConnection = verifyGmailConnection;
 sendEmail.createGmailTransporter = createGmailTransporter;
+sendEmail.getGmailTransporter = getGmailTransporter;
 
 module.exports = sendEmail;
